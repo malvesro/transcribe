@@ -115,7 +115,7 @@ Comece clonando este repositório e organizando os arquivos:
 
         transcribe/
     
-        ├── Dockerfile.txt      # Receita para construir a imagem Docker
+        ├── Dockerfile          # Para construir a imagem Docker
     
         ├── transcribe.py       # Script Python principal de transcrição
     
