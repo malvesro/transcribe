@@ -83,15 +83,15 @@ Com um único script de setup, você terá o ambiente preparado e atalhos (`alia
 Para utilizar este projeto, você precisa ter os seguintes softwares instalados em seu sistema operacional:
 
 1.  **Docker:** A plataforma que orquestra e executa o ambiente do Whisper em um contêiner isolado.
-
-    * [Guia de Instalação do Docker Engine](https://docs.docker
+  
+  * [Guia de Instalação do Docker Engine](https://docs.docker.com/engine/install/)
+    
 
 2.  **Placa de Vídeo (GPU) NVIDIA (Altamente Recomendado):** Para obter o máximo de desempenho e acelerar significativamente o processo de transcrição, uma GPU NVIDIA compatível com CUDA é fortemente recomendada.
   
 3.  **Drivers da NVIDIA e NVIDIA Container Toolkit:** Essenciais para permitir que o Docker acesse e utilize sua GPU.
   
-
-    * [Guia de Instalação do NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
+  * [Guia de Instalação do NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html)
 
 > ⚠️ **Atenção:** Embora o projeto funcione sem uma GPU NVIDIA, a transcrição será processada pela CPU e será **significativamente mais lenta**.
 
