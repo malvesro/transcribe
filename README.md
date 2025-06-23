@@ -1,21 +1,13 @@
 # 🎙️ Whisper Transcriber com Docker
 
 <p align="center">
-
-  <a href="https://github.com/malvesro/transcribe">
-
-    
-
-  </a>
-
-  
-
-  
-
-  
-
-  
-
+  <a href="https://github.com/malvesro/transcribe">
+    <img src="https://img.shields.io/badge/GitHub-malvesro%2Ftranscribe-blue?style=for-the-badge&logo=github" alt="Repositório GitHub">
+  </a>
+  <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python" alt="Python Version">
+  <img src="https://img.shields.io/badge/Docker-Compatible-blue?style=for-the-badge&logo=docker" alt="Docker Compatible">
+  <img src="https://img.shields.io/badge/GPU-NVIDIA%20CUDA-green?style=for-the-badge&logo=nvidia" alt="NVIDIA CUDA Compatible">
+  <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
 </p>
 
 ## 📄 Sumário
