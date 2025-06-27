@@ -81,7 +81,7 @@ run_sudo_command() {
 }
 
 
-# --- Função para instalar pré-requisitos do sistema (curl, lsb-release para NVIDIA, e packages para Docker) ---
+# --- Função para instalar pré-requisitos do sistema (curl, lsb-release) ---
 install_prerequisites() {
     log_message "INFO" "Instalando pré-requisitos do sistema: curl, lsb-release, ca-certificates, gnupg..."
 
@@ -307,7 +307,7 @@ build_docker_image() {
     local docker_cmd="docker"
     # Adicionamos uma verificação aqui para decidir se usamos 'sudo docker'
     # Esta é uma proteção para a sessão atual, caso o 'usermod -aG docker' ainda não tenha efeito
-    if ! groups | grep -q '\bdocker\b'; then # Se o usuário não está no grupo docker na sessão atual
+    if ! groups | grep -q '\bdocker\b'; then # Se o usuário não está no grupo docker nesta sessão
         log_message "WARN" "O usuário atual não está no grupo 'docker' nesta sessão. Tentando executar comandos docker com 'sudo'."
         docker_cmd="sudo docker"
     elif ! docker info &> /dev/null; then # Se o docker não estiver acessível sem sudo mesmo estando no grupo
@@ -415,8 +415,10 @@ show_help() {
     local zshrc_path="${YELLOW}$HOME/.zshrc${NC}"
     local source_bashrc="${YELLOW}source $HOME/.bashrc${NC}"
     local source_zshrc="${YELLOW}$HOME/.zshrc${NC}"
-    local model_small_note="${YELLOW}O modelo 'small' será usado por padrão${NC}, pois já está pré-carregado na imagem Docker. Não precisa especificar ${YELLOW}--model small${NC}."
-    local transcribe_help_cmd="${YELLOW}\`transcribe --help\`${NC}"
+    # Alterado 'small' para \"small\" para evitar possíveis problemas de parsing com aspas
+    local model_small_note="${YELLOW}O modelo \"small\" será usado por padrão${NC}, pois já está pré-carregado na imagem Docker. Não precisa especificar ${YELLOW}--model \"small\"${NC}."
+    # Alterado \`transcribe --help\` para 'transcribe --help' para simplificar o escape
+    local transcribe_help_cmd="${YELLOW}'transcribe --help'${NC}"
 
     local shell_config_file=$(get_user_shell_config_file)
     local source_command=""
@@ -465,4 +467,89 @@ ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━�
 * ${RED}Para que o Docker funcione sem 'sudo' na sua sessão atual (após ser adicionado ao grupo 'docker'), você DEVE REINICIAR seu terminal WSL completamente ou executar 'newgrp docker'.${NC}
 
 * ${RED}Para garantir que o Docker e o suporte à GPU estejam totalmente operacionais no WSL2, é ALTAMENTE RECOMENDADO reiniciar sua instância WSL2 completamente:${NC}
-    1.
+    1. Feche todas as janelas do terminal WSL.
+    2. Abra o PowerShell do Windows (ou Prompt de Comando).
+    3. Execute: ${YELLOW}wsl --shutdown${NC}
+    4. Reabra seu terminal WSL.
+
+${GREEN}🎉 Tudo pronto para suas transcrições com Whisper e CUDA! 🎉${NC}
+"
+}
+
+# --- Função Principal ---
+main() {
+    log_message "INFO" "Iniciando a configuração automatizada do Whisper Transcriber..."
+    echo
+
+    # 0. Remover qualquer configuração antiga do repositório NVIDIA APT
+    log_message "INFO" "Removendo qualquer configuração antiga do repositório NVIDIA APT antes de iniciar..."
+    run_sudo_command "limpar configurações antigas do repositório NVIDIA" "rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list &> /dev/null || true"
+    echo
+
+    # 1. Instalar Pré-requisitos do Sistema
+    if ! install_prerequisites; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 2. Instalar Docker Engine no Ubuntu WSL
+    if ! install_docker_engine; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 3. Configurar o repositório do NVIDIA Container Toolkit
+    if ! configure_nvidia_repo; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 4. Instalar pacotes NVIDIA (nvidia-utils e nvidia-container-toolkit)
+    if ! install_nvidia_packages; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 5. Configurar o Docker Daemon para usar o NVIDIA Runtime
+    if ! configure_docker_gpu_runtime; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 6. Reiniciar o serviço Docker
+    if ! restart_docker_service; then
+        log_message "WARN" "${YELLOW}Não foi possível reiniciar o serviço Docker automaticamente. Você pode precisar reiniciar o WSL ou o Docker Desktop manualmente.${NC}"
+    fi
+    echo
+
+    # 7. Verificar a instalação do nvidia-smi
+    if ! verify_nvidia_smi; then
+        log_message "WARN" "${YELLOW}Verificação do nvidia-smi falhou. Embora o setup possa ter ocorrido, pode haver problemas com a GPU ou drivers.${NC}\nIsso pode ser resolvido com um 'wsl --shutdown' no PowerShell do Windows, ou reinstalando os drivers NVIDIA no Windows."
+    fi
+    echo
+
+    # 8. Criar a pasta de vídeos
+    if ! create_videos_directory; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 9. Tentar construir a imagem Docker (apenas se não existir)
+    if ! build_docker_image; then
+        cleanup_on_error
+    fi
+    echo
+
+    # 10. Criar os aliases permanentes e para a sessão atual
+    if ! create_persistent_aliases; then
+        log_message "WARN" "${YELLOW}Houve um problema ao criar os aliases permanentes. Verifique o log.${NC}"
+    fi
+    echo
+
+    show_help # Exibe o help final com instruções de reinicialização
+
+    log_message "INFO" "Setup do Whisper Transcriber concluído com sucesso!"
+}
+
+# Chama a função principal
+main
