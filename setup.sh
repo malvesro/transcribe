@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euxo pipefail # Adicionamos flags de debug e segurança aqui
 
 # --- Configurações ---
 IMAGE_NAME="whisper-transcriber" # Nome da imagem Docker
@@ -38,7 +39,7 @@ log_message() {
 }
 
 # --- Configuração de tratamento de erros global ---
-set -e # Aborta o script em caso de erro
+# set -e # Já está no shebang com -euxo pipefail
 
 # Função para ser executada em caso de erro
 cleanup_on_error() {
@@ -80,17 +81,16 @@ run_sudo_command() {
 }
 
 
-# --- Função para instalar pré-requisitos do sistema ---
-# Apenas curl e lsb-release para o repositório NVIDIA e detecção da distro.
+# --- Função para instalar pré-requisitos do sistema (curl, lsb-release para NVIDIA, e packages para Docker) ---
 install_prerequisites() {
-    log_message "INFO" "Instalando pré-requisitos do sistema: curl, lsb-release..."
+    log_message "INFO" "Instalando pré-requisitos do sistema: curl, lsb-release, ca-certificates, gnupg..."
 
     if ! run_sudo_command "atualizar o índice de pacotes APT" "apt-get update"; then
         log_message "ERROR" "Falha ao atualizar o índice de pacotes. Verifique sua conexão com a internet ou as fontes do apt."
         return 1
     fi
 
-    if ! run_sudo_command "instalar pacotes essenciais (curl, lsb-release)" "apt-get install -y curl lsb-release"; then
+    if ! run_sudo_command "instalar pacotes essenciais (curl, lsb-release, ca-certificates, gnupg)" "apt-get install -y curl lsb-release ca-certificates gnupg"; then
         log_message "ERROR" "Falha ao instalar pré-requisitos. Verifique a saída do apt."
         return 1
     fi
@@ -98,11 +98,97 @@ install_prerequisites() {
     return 0
 }
 
+# --- Função para instalar o Docker Engine no Ubuntu WSL ---
+install_docker_engine() {
+    log_message "INFO" "Verificando instalação do Docker Engine no Ubuntu WSL..."
+
+    if command -v docker &> /dev/null && docker info &> /dev/null; then
+        log_message "INFO" "${YELLOW}Docker Engine já está instalado e em execução no Ubuntu WSL. Pulando a instalação.${NC}"
+        return 0
+    fi
+
+    log_message "INFO" "Instalando Docker Engine no Ubuntu WSL..."
+
+    # Adicionar chave GPG oficial do Docker
+    log_message "INFO" "Adicionando chave GPG oficial do Docker..."
+    if ! run_sudo_command "criar o diretório para keyrings GPG do Docker" "install -m 0755 -d /etc/apt/keyrings"; then
+        return 1
+    fi
+    if ! curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg; then
+        log_message "ERROR" "Falha ao baixar ou instalar a chave GPG do Docker."
+        return 1
+    fi
+    if ! run_sudo_command "alterar permissões da chave GPG do Docker" "chmod a+r /etc/apt/keyrings/docker.gpg"; then
+        return 1
+    fi
+    log_message "INFO" "${GREEN}Chave GPG do Docker adicionada.${NC}"
+
+    # Adicionar repositório Docker ao APT sources
+    log_message "INFO" "Adicionando repositório Docker ao APT sources..."
+    local os_release_codename
+    os_release_codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
+    if [ -z "$os_release_codename" ]; then
+        log_message "ERROR" "Não foi possível determinar o codinome da sua distribuição Ubuntu."
+        return 1
+    fi
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu ${os_release_codename} stable" | \
+        sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    if [ $? -ne 0 ]; then
+        log_message "ERROR" "Falha ao adicionar o repositório Docker. Verifique sua conexão ou a sintaxe."
+        return 1
+    fi
+    log_message "INFO" "${GREEN}Repositório Docker adicionado.${NC}"
+
+    # Instalar pacotes do Docker
+    log_message "INFO" "Atualizando índice de pacotes APT e instalando pacotes Docker..."
+    if ! run_sudo_command "atualizar índice de pacotes APT" "apt-get update"; then
+        log_message "ERROR" "Falha ao atualizar o índice de pacotes após adicionar repositório Docker."
+        return 1
+    fi
+    if ! run_sudo_command "instalar Docker Engine" "apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin"; then
+        log_message "ERROR" "Falha ao instalar pacotes do Docker Engine."
+        return 1
+    fi
+    log_message "INFO" "${GREEN}Docker Engine instalado com sucesso!${NC}"
+
+    # Adicionar usuário atual ao grupo 'docker'
+    log_message "INFO" "Adicionando o usuário atual ('$USER') ao grupo 'docker'..."
+    if ! groups "$USER" | grep -q '\bdocker\b'; then
+        if ! run_sudo_command "adicionar usuário '$USER' ao grupo 'docker'" "usermod -aG docker $USER"; then
+            log_message "ERROR" "Falha ao adicionar o usuário '$USER' ao grupo 'docker'."
+            log_message "ERROR" "Você precisará fazer isso manualmente e reiniciar seu terminal para que as alterações tenham efeito."
+            return 1
+        fi
+        log_message "INFO" "${GREEN}Usuário '$USER' adicionado ao grupo 'docker'.${NC}"
+        log_message "WARN" "${YELLOW}Para que as permissões do Docker tenham efeito sem 'sudo', você precisará REINICIAR seu terminal WSL ou executar 'newgrp docker'.${NC}"
+    else
+        log_message "INFO" "Usuário '$USER' já está no grupo 'docker'."
+    fi
+
+    # Iniciar o serviço Docker
+    log_message "INFO" "Iniciando o serviço Docker..."
+    if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null; then
+        if ! run_sudo_command "iniciar serviço Docker via systemctl" "systemctl start docker"; then
+            log_message "ERROR" "Falha ao iniciar o Docker via systemctl."
+            return 1
+        fi
+    elif command -v service &> /dev/null; then
+        if ! run_sudo_command "iniciar serviço Docker via service" "service docker start"; then
+            log_message "ERROR" "Falha ao iniciar o Docker via service. Por favor, tente iniciar manualmente ('sudo service docker start')."
+            return 1
+        fi
+    else
+        log_message "WARN" "Não foi possível iniciar o serviço Docker automaticamente (systemctl ou service não encontrados). Por favor, inicie-o manualmente (ex: 'sudo systemctl start docker')."
+    fi
+    log_message "INFO" "${GREEN}Serviço Docker iniciado.${NC}"
+
+    return 0
+}
+
+
 # --- Funções de Configuração NVIDIA/CUDA ---
 configure_nvidia_repo() {
     log_message "INFO" "Configurando o repositório do NVIDIA Container Toolkit..."
-
-    # OBS: A remoção de configurações antigas foi movida para a função 'main' para ser executada mais cedo.
 
     # Adicionar a chave GPG da NVIDIA
     log_message "INFO" "Adicionando a chave GPG da NVIDIA..."
@@ -125,12 +211,11 @@ configure_nvidia_repo() {
     fi
 
     log_message "INFO" "Adicionando a linha do repositório NVIDIA Container Toolkit (stable/deb/)..."
-    # Utilizando o método oficial da NVIDIA para adicionar o repositório stable/deb/
-    # Isso garante que a linha no sources.list.d corresponda exatamente à documentação oficial,
-    # que não inclui a parte [arch=...] para o repositório stable/deb/.
+    local os_release_codename
+    os_release_codename=$(. /etc/os-release && echo "$VERSION_CODENAME")
     if ! curl -fsSL https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-       sudo sed "s#deb https://#deb [signed-by=${keyring_path}] https://#g" | \
-       sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null; then
+        sudo sed "s#deb https://#deb [signed-by=${keyring_path}] https://#g" | \
+        sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list > /dev/null; then
         log_message "ERROR" "Falha ao adicionar o repositório da NVIDIA 'stable/deb/'. Verifique sua conexão com a internet ou a URL."
         return 1
     fi
@@ -167,7 +252,15 @@ install_nvidia_packages() {
 
 configure_docker_gpu_runtime() {
     log_message "INFO" "Configurando o Docker Daemon para usar o NVIDIA Runtime..."
-    if ! run_sudo_command "configurar o Docker Daemon para o NVIDIA Runtime" "nvidia-ctk runtime configure --runtime=docker"; then
+    local docker_ctk_cmd="nvidia-ctk"
+
+    # Se o nvidia-ctk não estiver no PATH ou necessitar de sudo, ajusta o comando
+    if ! command -v "$docker_ctk_cmd" &> /dev/null || ! "$docker_ctk_cmd" runtime configure --runtime=docker &> /dev/null; then
+        log_message "WARN" "Comando 'nvidia-ctk' não acessível diretamente ou requer sudo. Tentando com 'sudo nvidia-ctk'."
+        docker_ctk_cmd="sudo nvidia-ctk"
+    fi
+
+    if ! ${docker_ctk_cmd} runtime configure --runtime=docker; then
         log_message "ERROR" "Falha ao configurar o Docker Daemon para o NVIDIA Runtime."
         return 1
     fi
@@ -179,7 +272,6 @@ restart_docker_service() {
     log_message "INFO" "Reiniciando o serviço Docker..."
     local docker_restart_cmd=""
 
-    # Tenta systemctl se disponível e em execução
     if command -v systemctl &> /dev/null && systemctl is-system-running &> /dev/null; then
         docker_restart_cmd="systemctl restart docker"
     elif command -v service &> /dev/null; then
@@ -188,7 +280,7 @@ restart_docker_service() {
 
     if [ -n "$docker_restart_cmd" ]; then
         if ! run_sudo_command "reiniciar o serviço Docker" "$docker_restart_cmd"; then
-            log_message "ERROR" "Falha ao reiniciar o Docker automaticamente. Por favor, reinicie o Docker Desktop/WSL manualmente."
+            log_message "ERROR" "Falha ao reiniciar o Docker automaticamente. Por favor, reinicie o WSL manualmente ou o Docker Desktop se estiver usando."
             return 1
         fi
     else
@@ -212,8 +304,20 @@ verify_nvidia_smi() {
 
 # --- Função para construir a imagem Docker ---
 build_docker_image() {
+    local docker_cmd="docker"
+    # Adicionamos uma verificação aqui para decidir se usamos 'sudo docker'
+    # Esta é uma proteção para a sessão atual, caso o 'usermod -aG docker' ainda não tenha efeito
+    if ! groups | grep -q '\bdocker\b'; then # Se o usuário não está no grupo docker na sessão atual
+        log_message "WARN" "O usuário atual não está no grupo 'docker' nesta sessão. Tentando executar comandos docker com 'sudo'."
+        docker_cmd="sudo docker"
+    elif ! docker info &> /dev/null; then # Se o docker não estiver acessível sem sudo mesmo estando no grupo
+         log_message "WARN" "O comando 'docker' não está acessível sem 'sudo' nesta sessão. Tentando com 'sudo docker'."
+         docker_cmd="sudo docker"
+    fi
+
+
     log_message "INFO" "Verificando imagem Docker '${IMAGE_NAME}'..."
-    if docker image inspect "$IMAGE_NAME" &> /dev/null; then
+    if ${docker_cmd} image inspect "$IMAGE_NAME" &> /dev/null; then
         log_message "INFO" "${YELLOW}A imagem Docker '${IMAGE_NAME}' já existe localmente. Pulando o build.${NC}"
         return 0 # Sucesso (imagem já existe)
     fi
@@ -223,7 +327,7 @@ build_docker_image() {
         log_message "ERROR" "${RED}Arquivo 'Dockerfile' não encontrado no diretório atual. Certifique-se de que ele está presente.${NC}"
         return 1
     fi
-    if ! docker build -t "$IMAGE_NAME" -f Dockerfile .; then
+    if ! ${docker_cmd} build -t "$IMAGE_NAME" -f Dockerfile .; then
         log_message "ERROR" "${RED}Falha no build da imagem Docker '${IMAGE_NAME}'. Verifique o Dockerfile e a saída do build.${NC}"
         return 1 # Falha
     fi
@@ -276,7 +380,7 @@ create_persistent_aliases() {
 
     if [ "$needs_update" = true ]; then
         log_message "INFO" "Adicionando aliases ao '${shell_config_file}'..."
-        
+
         # Adicionar cabeçalho usando um here-document (mais robusto para strings multilinhas)
         log_message "INFO" "Será necessário privilégios de superusuário (sudo) para adicionar o cabeçalho dos aliases."
         log_message "INFO" "Por favor, insira sua senha, se solicitado."
@@ -287,7 +391,7 @@ EOF_ALIASES_HEADER
             log_message "ERROR" "Falha ao adicionar o cabeçalho dos aliases ao '${shell_config_file}'."
             return 1
         fi
-        
+
         for line in "${alias_lines[@]}"; do
             if ! run_sudo_command "adicionar alias: $line" "echo \"$line\" | tee -a \"$shell_config_file\" > /dev/null"; then return 1; fi
         done
@@ -358,96 +462,7 @@ ${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━�
     ${GREEN}${source_command}${NC}
     (ou o comando equivalente para o seu shell, se ${shell_config_file} for diferente)
 
+* ${RED}Para que o Docker funcione sem 'sudo' na sua sessão atual (após ser adicionado ao grupo 'docker'), você DEVE REINICIAR seu terminal WSL completamente ou executar 'newgrp docker'.${NC}
+
 * ${RED}Para garantir que o Docker e o suporte à GPU estejam totalmente operacionais no WSL2, é ALTAMENTE RECOMENDADO reiniciar sua instância WSL2 completamente:${NC}
-    1. Feche todas as janelas do terminal WSL.
-    2. Abra o PowerShell do Windows (ou Prompt de Comando).
-    3. Execute: ${YELLOW}wsl --shutdown${NC}
-    4. Reabra seu terminal WSL.
-
-${GREEN}🎉 Tudo pronto para suas transcrições com Whisper e CUDA! 🎉${NC}
-"
-}
-
-# --- Execução Principal ---
-main() {
-    # Limpa o log anterior ao iniciar uma nova execução
-    > "$LOG_FILE"
-    log_message "INFO" "Iniciando a configuração automatizada do Whisper Transcriber..."
-    echo # Quebra de linha para espaçamento visual
-
-    # Limpar qualquer configuração antiga do repositório NVIDIA APT antes de tudo
-    log_message "INFO" "Removendo qualquer configuração antiga do repositório NVIDIA APT antes de iniciar..."
-    run_sudo_command "limpar configurações antigas do repositório NVIDIA" "rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list &> /dev/null || true"
-    echo # Quebra de linha para espaçamento visual
-
-    # 1. Verificar se o Docker está em execução (pré-requisito explícito)
-    log_message "INFO" "Verificando se o Docker Desktop/Daemon está em execução no Windows host..."
-    if ! docker info &> /dev/null; then
-        log_message "ERROR" "${RED}O Docker Desktop/Daemon não está em execução no Windows host. Ele é um pré-requisito e deve estar funcionando para prosseguir.${NC}"
-        log_message "ERROR" "${RED}Por favor, inicie o Docker Desktop no Windows e tente novamente.${NC}"
-        exit 1 # Aborta o script, pois o pré-requisito essencial não foi atendido
-    fi
-    log_message "INFO" "${GREEN}Docker Desktop/Daemon está em execução. Ótimo!${NC}"
-    echo # Quebra de linha para espaçamento visual
-
-    # 2. Instalar pré-requisitos do sistema (simplificado)
-    if ! install_prerequisites; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 3. Configurar repositório NVIDIA Container Toolkit
-    if ! configure_nvidia_repo; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 4. Atualizar APT e instalar pacotes NVIDIA (nvidia-utils-55x, nvidia-container-toolkit)
-    if ! install_nvidia_packages; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 5. Configurar Docker Daemon para NVIDIA Runtime
-    if ! configure_docker_gpu_runtime; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 6. Reiniciar o serviço Docker
-    if ! restart_docker_service; then
-        log_message "WARN" "${YELLOW}Não foi possível reiniciar o serviço Docker automaticamente. Você pode precisar reiniciar o WSL ou o Docker Desktop manualmente.${NC}"
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 7. Verificar a instalação do nvidia-smi
-    if ! verify_nvidia_smi; then
-        log_message "WARN" "${YELLOW}Verificação do nvidia-smi falhou. Embora o setup possa ter ocorrido, pode haver problemas com a GPU ou drivers.${NC}"
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 8. Criar a pasta de vídeos
-    if ! create_videos_directory; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 9. Tentar construir a imagem Docker (apenas se não existir)
-    if ! build_docker_image; then
-        cleanup_on_error
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    # 10. Criar os aliases permanentes e para a sessão atual
-    if ! create_persistent_aliases; then
-        log_message "WARN" "${YELLOW}Houve um problema ao criar os aliases permanentes. Verifique o log.${NC}"
-    fi
-    echo # Quebra de linha para espaçamento visual
-
-    show_help # Exibe o help final com instruções de reinicialização
-
-    log_message "INFO" "Setup do Whisper Transcriber concluído com sucesso."
-}
-
-# Chama a função principal
-main
+    1.
