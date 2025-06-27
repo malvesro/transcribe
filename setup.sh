@@ -280,7 +280,7 @@ restart_docker_service() {
 
     if [ -n "$docker_restart_cmd" ]; then
         if ! run_sudo_command "reiniciar o serviço Docker" "$docker_restart_cmd"; then
-            log_message "ERROR" "Falha ao reiniciar o Docker automaticamente. Por favor, reinicie o WSL manualmente ou o Docker Desktop se estiver usando."
+            log_message "ERROR" "Falha ao reiniciar o Docker automaticamente. Por favor, reinicie o Docker Desktop/WSL manualmente."
             return 1
         fi
     else
@@ -380,7 +380,7 @@ create_persistent_aliases() {
 
     if [ "$needs_update" = true ]; then
         log_message "INFO" "Adicionando aliases ao '${shell_config_file}'..."
-
+        
         # Adicionar cabeçalho usando um here-document (mais robusto para strings multilinhas)
         log_message "INFO" "Será necessário privilégios de superusuário (sudo) para adicionar o cabeçalho dos aliases."
         log_message "INFO" "Por favor, insira sua senha, se solicitado."
@@ -391,7 +391,7 @@ EOF_ALIASES_HEADER
             log_message "ERROR" "Falha ao adicionar o cabeçalho dos aliases ao '${shell_config_file}'."
             return 1
         fi
-
+        
         for line in "${alias_lines[@]}"; do
             if ! run_sudo_command "adicionar alias: $line" "echo \"$line\" | tee -a \"$shell_config_file\" > /dev/null"; then return 1; fi
         done
@@ -478,73 +478,79 @@ ${GREEN}🎉 Tudo pronto para suas transcrições com Whisper e CUDA! 🎉${NC}
 
 # --- Função Principal ---
 main() {
-    log_message "INFO" "Iniciando a configuração automatizada do Whisper Transcriber..."
-    echo
+    # Garante que o script seja executado do seu próprio diretório
+    # Isso é crucial para que os comandos como 'docker build .' funcionem corretamente
+    cd "$(dirname "$0")" || { log_message "ERROR" "Falha ao mudar para o diretório do script: $(dirname "$0")"; exit 1; }
 
-    # 0. Remover qualquer configuração antiga do repositório NVIDIA APT
+    # Limpa o log anterior ao iniciar uma nova execução
+    > "$LOG_FILE"
+    log_message "INFO" "Iniciando a configuração automatizada do Whisper Transcriber..."
+    echo # Quebra de linha para espaçamento visual
+
+    # Limpar qualquer configuração antiga do repositório NVIDIA APT antes de tudo
     log_message "INFO" "Removendo qualquer configuração antiga do repositório NVIDIA APT antes de iniciar..."
     run_sudo_command "limpar configurações antigas do repositório NVIDIA" "rm -f /etc/apt/sources.list.d/nvidia-container-toolkit.list &> /dev/null || true"
-    echo
+    echo # Quebra de linha para espaçamento visual
 
-    # 1. Instalar Pré-requisitos do Sistema
+    # 1. Instalar Pré-requisitos do Sistema (curl, lsb-release, ca-certificates, gnupg)
     if ! install_prerequisites; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 2. Instalar Docker Engine no Ubuntu WSL
     if ! install_docker_engine; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 3. Configurar o repositório do NVIDIA Container Toolkit
     if ! configure_nvidia_repo; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 4. Instalar pacotes NVIDIA (nvidia-utils e nvidia-container-toolkit)
     if ! install_nvidia_packages; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 5. Configurar o Docker Daemon para usar o NVIDIA Runtime
     if ! configure_docker_gpu_runtime; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 6. Reiniciar o serviço Docker
     if ! restart_docker_service; then
-        log_message "WARN" "${YELLOW}Não foi possível reiniciar o serviço Docker automaticamente. Você pode precisar reiniciar o WSL ou o Docker Desktop manualmente.${NC}"
+        log_message "WARN" "${YELLOW}Não foi possível reiniciar o serviço Docker automaticamente. Você pode precisar reiniciar o WSL manualmente ou o Docker Desktop se estiver usando.${NC}"
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 7. Verificar a instalação do nvidia-smi
     if ! verify_nvidia_smi; then
         log_message "WARN" "${YELLOW}Verificação do nvidia-smi falhou. Embora o setup possa ter ocorrido, pode haver problemas com a GPU ou drivers.${NC}\nIsso pode ser resolvido com um 'wsl --shutdown' no PowerShell do Windows, ou reinstalando os drivers NVIDIA no Windows."
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 8. Criar a pasta de vídeos
     if ! create_videos_directory; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 9. Tentar construir a imagem Docker (apenas se não existir)
     if ! build_docker_image; then
         cleanup_on_error
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     # 10. Criar os aliases permanentes e para a sessão atual
     if ! create_persistent_aliases; then
         log_message "WARN" "${YELLOW}Houve um problema ao criar os aliases permanentes. Verifique o log.${NC}"
     fi
-    echo
+    echo # Quebra de linha para espaçamento visual
 
     show_help # Exibe o help final com instruções de reinicialização
 
