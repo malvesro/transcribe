@@ -39,8 +39,8 @@ COPY transcribe.py .
 # Isso torna a execução mais simples, pois estaremos no diretório montado.
 WORKDIR /data
 
-# Estágio 5: Ponto de Entrada
-# Define o comando que será executado quando o contêiner iniciar.
-# Ele chama o nosso script Python, e os argumentos adicionais no `docker run`
-# serão passados diretamente para ele.
-ENTRYPOINT ["python3", "/app/transcribe.py"]
+# Estágio 5: Comando Padrão para Manter o Container Rodando
+# Removemos o ENTRYPOINT que executa transcribe.py diretamente.
+# Em vez disso, usamos um CMD que mantém o container ativo,
+# permitindo que `docker compose exec` chame o script transcribe.py conforme necessário.
+CMD ["tail", "-f", "/dev/null"]

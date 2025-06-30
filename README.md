@@ -19,7 +19,7 @@
 * [Pré-requisitos](#-pré-requisitos)
 * [Como Começar](#-como-começar)
   * [Estrutura do Projeto](#estrutura-do-projeto)
-  * [Configuração Inicial do Ambiente (WSL, Docker, NVIDIA)](#configuração-inicial-do-ambiente-wsl-docker-nvidia)
+  * [Configuração Inicial do Ambiente (Opcional - WSL, Docker, NVIDIA)](#configuração-inicial-do-ambiente-opcional---wsl-docker-nvidia)
 * [**🚀 Executando a Aplicação com Docker Compose (Recomendado)**](#-executando-a-aplicação-com-docker-compose-recomendado)
   * [Utilizando a Interface Web](#utilizando-a-interface-web)
 * [Uso via Linha de Comando (Alternativo/Avançado)](#-uso-via-linha-de-comando-alternativoavançado)
@@ -28,9 +28,8 @@
   * [`transcriber_web_app/Dockerfile.flask`](#transcriber_web_appdockerfileflask)
   * [`transcriber_web_app/Dockerfile.whisper`](#transcriber_web_appdockerfilewhisper)
   * [`transcriber_web_app/app.py`](#transcriber_web_appapppy)
+  * [`transcriber_web_app/transcribe.py`](#transcriber_web_apptranscribepy)
   * [`transcriber_web_app/run_local_mvp.sh`](#transcriber_web_apprun_local_mvpsh-lançador-do-docker-compose)
-  * [`setup.sh` (Configuração Base CLI Antiga)](#setupsh-configuração-base-cli-antiga)
-  * [`Instalador_Whisper.ps1` (Configuração Base Windows)](#instalador_whisperps1-configuração-base-windows)
 * [Contribuição](#-contribuição)
 * [Licença](#-licença)
 * [Contato](#-contato)
@@ -39,252 +38,191 @@
 
 ## 💡 Visão Geral
 
-Este projeto oferece uma solução robusta e simplificada para transcrever áudios de vídeos em português utilizando o modelo **Whisper** da OpenAI. A arquitetura foi **refatorada para usar Docker Compose**, orquestrando dois serviços principais: uma **interface web amigável baseada em Flask** para interações do usuário e um **worker Whisper dedicado** para o processamento pesado das transcrições.
+Este projeto oferece uma solução robusta e simplificada para transcrever áudios e vídeos utilizando o modelo **Whisper** da OpenAI. A arquitetura é baseada em **Docker Compose**, orquestrando dois serviços principais: uma **interface web amigável (Flask)** para interações do usuário e um **worker Whisper dedicado** para o processamento das transcrições.
 
-Essa abordagem com Docker Compose melhora o isolamento dos serviços, simplifica o gerenciamento do ambiente de desenvolvimento e produção, e facilita a escalabilidade e manutenção futuras.
+Esta abordagem melhora o isolamento dos serviços, simplifica o gerenciamento do ambiente e facilita futuras manutenções e evoluções. A interface web permite upload de arquivos, seleção de modelos Whisper, acompanhamento do status da transcrição e download dos resultados.
 
-Para usuários Windows, o script **`Instalador_Whisper.ps1`** continua útil para a configuração inicial do WSL/Ubuntu e do ambiente Docker com suporte a GPU, que são a base para rodar a solução com Docker Compose.
+Scripts como `Instalador_Whisper.ps1` e `setup.sh` (de versões anteriores, focados na CLI) podem ainda ser úteis para a configuração inicial do ambiente Docker com suporte a GPU no host, especialmente para usuários Windows com WSL2.
 
 ## 🏗️ Arquitetura com Docker Compose
 
-A solução agora é composta por dois serviços principais gerenciados pelo Docker Compose:
+A solução é composta por dois serviços principais gerenciados pelo `docker-compose.yml`:
 
 1.  **`webapp` (Serviço Flask):**
-    *   Responsável por servir a interface web frontend (HTML, CSS, JS).
-    *   Gerencia o upload de arquivos de mídia.
-    *   Aciona o serviço `whisper_worker` para realizar as transcrições.
-    *   Fornece endpoints para verificar o status dos jobs e baixar os resultados.
-    *   Executa em seu próprio container Docker, definido por `transcriber_web_app/Dockerfile.flask`.
+    *   Frontend: Serve a interface web (HTML, CSS, JS).
+    *   Backend: Gerencia uploads, inicia jobs de transcrição e fornece status/resultados.
+    *   Comunicação com Worker: Utiliza a API Docker (via socket montado) para executar o script de transcrição no container do worker.
+    *   Definido por `transcriber_web_app/Dockerfile.flask`.
 
 2.  **`whisper_worker` (Serviço de Transcrição):**
-    *   Contém o ambiente Whisper, PyTorch, CUDA (para GPU) e `ffmpeg`.
-    *   Executa o script `transcribe.py` para processar os arquivos de mídia.
-    *   Lê arquivos de um volume compartilhado e salva os resultados nesse mesmo volume.
-    *   Executa em seu próprio container Docker, definido por `transcriber_web_app/Dockerfile.whisper`.
+    *   Ambiente: Contém Whisper, PyTorch, CUDA (para GPU), `ffmpeg`.
+    *   Processamento: Executa o script `transcriber_web_app/transcribe.py`.
+    *   Definido por `transcriber_web_app/Dockerfile.whisper`.
 
-**Volumes Compartilhados:**
-*   `videos/`: Usado para armazenar os arquivos de mídia enviados pela `webapp` e lidos pelo `whisper_worker`.
-*   `results/`: Usado pelo `whisper_worker` para salvar os arquivos de transcrição, que são então servidos pela `webapp`.
-*   `whisper_models/` (Volume Nomeado): Usado para persistir os modelos Whisper baixados, evitando downloads repetidos.
-
-**Rede:** Os serviços comunicam-se através de uma rede Docker customizada, gerenciada pelo Docker Compose.
+**Interação e Volumes:**
+*   A `webapp` recebe o arquivo, salva-o em um volume compartilhado (`./transcriber_web_app/videos` no host).
+*   A `webapp` instrui o Docker (via API) a executar o `transcribe.py` no `whisper_worker`.
+*   O `whisper_worker` lê o vídeo do volume compartilhado e escreve os resultados (`.txt`, `.srt`, `.vtt`) em outro volume compartilhado (`./transcriber_web_app/results/<job_id>` no host).
+*   A `webapp` monitora esta pasta de resultados para atualizar o status na UI e permitir o download.
+*   Um volume nomeado (`whisper_models`) é usado para cachear os modelos Whisper baixados.
 
 ## 🚀 Funcionalidades
 
-* **Orquestração com Docker Compose:** Gerenciamento simplificado de múltiplos containers (webapp e worker).
-* **Interface Web Intuitiva:** Upload de arquivos, seleção de modelos e gerenciamento de transcrições pelo navegador.
-* **Feedback em Tempo Real (Polling):** Acompanhe o status das suas transcrições na interface web.
-* **Download Direto:** Baixe os arquivos de transcrição (.txt, .srt, .vtt) diretamente da interface web.
-* **Transcrições de Alta Qualidade:** Utiliza o modelo Whisper da OpenAI.
-* **Aceleração por GPU:** Suporte integrado para GPUs NVIDIA via CUDA e Docker Compose.
-* **Ambiente Isolado e Reproduzível:** Dependências gerenciadas dentro de containers Docker.
-* **Suporte a Diversos Formatos:** Transcreve áudio de diversos formatos de vídeo e áudio via `ffmpeg`.
+* **Orquestração com Docker Compose:** Gerenciamento simplificado dos containers `webapp` e `whisper_worker`.
+* **Interface Web Intuitiva:** Upload de arquivos, seleção de modelos, acompanhamento de status e download de resultados.
+* **Processamento em Background:** A transcrição é executada em uma thread separada no backend, não bloqueando a interface do usuário.
+* **Transcrições de Alta Qualidade:** Utiliza os modelos Whisper da OpenAI.
+* **Aceleração por GPU:** Suporte para GPUs NVIDIA (requer configuração do host e Docker).
+* **Ambiente Isolado e Reproduzível:** Todas as dependências são gerenciadas dentro de containers.
 
 ## 📋 Pré-requisitos
 
-1.  **Windows com WSL2 e Ubuntu:** O script `Instalador_Whisper.ps1` auxilia nesta configuração. (Para Linux/macOS, WSL não é necessário, apenas Docker).
-2.  **Docker Engine e Docker Compose (v1 `docker-compose` ou v2 `docker compose`):**
-    *   Windows: Recomendado via **Docker Desktop para Windows**.
-    *   Linux: Instalação direta do Docker Engine e Docker Compose.
-    *   macOS: Recomendado via **Docker Desktop para Mac**.
-3.  **Drivers NVIDIA (Opcional, para GPU):** Drivers mais recentes instalados no sistema host (Windows/Linux).
-    *   **NVIDIA Container Toolkit** (ou equivalente) deve estar configurado para que o Docker possa acessar a GPU. O `Instalador_Whisper.ps1` e `setup.sh` tentam auxiliar nisso para WSL/Linux.
+1.  **Docker Engine e Docker Compose:**
+    *   **Docker Compose v2 (`docker compose`) é recomendado.** O script de inicialização tenta detectar a versão correta.
+    *   Windows/macOS: Instalar via Docker Desktop.
+    *   Linux: Instalação direta do Docker Engine e do plugin Docker Compose.
+2.  **Para Suporte a GPU (Opcional, mas Recomendado para Performance):**
+    *   Placa de vídeo NVIDIA.
+    *   Drivers NVIDIA atualizados no sistema host.
+    *   **NVIDIA Container Toolkit** (ou `nvidia-docker2`) instalado e configurado no host para permitir que o Docker acesse a GPU.
+        *   No Windows com WSL2, o Docker Desktop geralmente lida com a integração da GPU se os drivers estiverem corretos no Windows e o backend WSL2 estiver configurado para usar a GPU.
+        *   No Linux, siga as instruções da NVIDIA para instalar o toolkit.
 
 ## 🚀 Como Começar
 
 ### Estrutura do Projeto
-
-Após clonar o repositório, a estrutura principal será:
 ```
 transcribe/
-├── docker-compose.yml          # NOVO: Arquivo de orquestração do Docker Compose
+├── docker-compose.yml          # Arquivo de orquestração do Docker Compose
 ├── transcriber_web_app/
-│   ├── Dockerfile.flask        # NOVO: Dockerfile para o serviço webapp Flask
-│   ├── Dockerfile.whisper      # ANTERIORMENTE Dockerfile: Para o serviço whisper_worker
+│   ├── Dockerfile.flask        # Dockerfile para o serviço webapp Flask
+│   ├── Dockerfile.whisper      # Dockerfile para o serviço whisper_worker
 │   ├── app.py                  # Lógica do servidor Flask (backend)
 │   ├── requirements.txt        # Dependências Python para o webapp
-│   ├── run_local_mvp.sh        # AGORA um lançador para 'docker-compose up'
+│   ├── run_local_mvp.sh        # Script auxiliar para iniciar com Docker Compose
 │   ├── static/                 # Arquivos frontend (HTML, CSS, JS)
-│   ├── templates/              # Templates HTML (se usando Jinja2)
+│   ├── templates/              # (Não utilizado atualmente, mas pasta existe)
 │   ├── transcribe.py           # Script Whisper, usado pelo whisper_worker
 │   ├── videos/                 # Pasta para uploads de vídeo (montada em containers)
-│   └── results/                # Pasta para resultados de transcrição (montada em containers)
+│   └── results/                # Pasta para resultados (montada em containers)
 │
-├── setup.sh                    # Script de setup para ambiente Docker base e NVIDIA (pode ser opcional)
-├── Instalador_Whisper.ps1      # Script de instalação Windows para ambiente base Docker/NVIDIA
 ├── README.md                   # Este arquivo
-└── ... (outros arquivos como .gitignore, LICENSE)
+└── ... (outros arquivos como .gitignore, LICENSE, setup.sh, Instalador_Whisper.ps1)
 ```
+*Nota: `setup.sh` e `Instalador_Whisper.ps1` são de versões anteriores e podem ser úteis para configurar o ambiente Docker/NVIDIA no host, mas não são mais o método principal para rodar a aplicação.*
 
-### Configuração Inicial do Ambiente (WSL, Docker, NVIDIA)
+### Configuração Inicial do Ambiente (Opcional - WSL, Docker, NVIDIA)
 
-Se você é um novo usuário ou precisa configurar o ambiente Docker com suporte a GPU pela primeira vez (especialmente no Windows com WSL2):
-
-1.  **Execute o `Instalador_Whisper.ps1` (Windows):**
-    *   Abra o PowerShell como Administrador.
-    *   Navegue até o diretório do script e execute: `.\Instalador_Whisper.ps1`.
-    *   Este script auxilia na configuração do WSL2, Ubuntu, e na preparação do ambiente Docker/NVIDIA no WSL.
-    *   **Importante:** Reinicie sua instância WSL2 (`wsl --shutdown` no PowerShell) após a conclusão, se solicitado.
-
-2.  **Para usuários Linux/macOS ou WSL já configurado:**
-    *   Certifique-se de que Docker e Docker Compose (v1 ou v2) estejam instalados e funcionando.
-    *   Para suporte a GPU NVIDIA no Linux, garanta que os drivers NVIDIA e o NVIDIA Container Toolkit estejam instalados e configurados para o Docker. O script `setup.sh` pode auxiliar nisso, mas seu uso pode ser opcional se o ambiente já estiver pronto.
+Se você precisa configurar o Docker, WSL2 (para Windows) ou o suporte a GPU NVIDIA no seu sistema host, os scripts `Instalador_Whisper.ps1` (para Windows) e `setup.sh` (para Linux/WSL) podem fornecer um ponto de partida ou referência. No entanto, com a arquitetura Docker Compose, o foco principal é ter Docker e Docker Compose funcionando no host.
 
 ## **🚀 Executando a Aplicação com Docker Compose (Recomendado)**
 
-Com o ambiente Docker e Docker Compose prontos:
-
-1.  **Clone o Repositório (se ainda não o fez):**
+1.  **Clone o Repositório:**
     ```bash
     git clone https://github.com/malvesro/transcribe.git
     cd transcribe
     ```
 
 2.  **Inicie a Aplicação:**
-    *   **Opção 1: Usando o script auxiliar `run_local_mvp.sh` (recomendado para simplicidade):**
-        Este script está localizado dentro da pasta `transcriber_web_app/`. Ele navega para o diretório raiz e executa os comandos do Docker Compose.
+    *   **Usando o script auxiliar `run_local_mvp.sh` (localizado em `transcriber_web_app/`):**
+        Este script navega para o diretório raiz e executa `docker compose up`.
         ```bash
         bash transcriber_web_app/run_local_mvp.sh
         ```
-        O script verificará o Docker/Docker Compose, criará as pastas `videos/` e `results/` (dentro de `transcriber_web_app/`) se necessário, e executará `docker-compose up --build -d`.
+        Ele tentará detectar sua versão do Docker Compose, criar as pastas `./transcriber_web_app/videos` e `./transcriber_web_app/results` no host, e iniciar os serviços.
 
-    *   **Opção 2: Usando Docker Compose diretamente (do diretório raiz do projeto `transcribe/`):**
-        Certifique-se de que as pastas `transcriber_web_app/videos/` e `transcriber_web_app/results/` existam (o script `run_local_mvp.sh` faz isso, ou crie-as manualmente: `mkdir -p transcriber_web_app/videos transcriber_web_app/results`).
-        ```bash
-        # Para Docker Compose v2 (mais recente)
-        docker compose up --build -d
+    *   **Ou, usando Docker Compose diretamente (do diretório raiz `transcribe/`):**
+        a. Crie as pastas de volume no host se não existirem:
+           ```bash
+           mkdir -p ./transcriber_web_app/videos
+           mkdir -p ./transcriber_web_app/results
+           ```
+        b. Suba os serviços:
+           ```bash
+           # Para Docker Compose v2 (recomendado)
+           docker compose up --build -d
 
-        # Ou para Docker Compose v1 (legado)
-        # docker-compose up --build -d
-        ```
-        O comando `--build` reconstrói as imagens se houver alterações nos Dockerfiles. `-d` executa em modo detached (background).
+           # Ou para Docker Compose v1 (legado)
+           # docker-compose up --build -d
+           ```
+           O comando `--build` reconstrói as imagens se houver alterações nos Dockerfiles ou código. `-d` executa em modo detached (background).
 
-3.  **Acesse no Navegador:**
-    A aplicação web estará disponível em: [http://localhost:5000](http://localhost:5000)
+3.  **Acesse a Interface Web:**
+    Abra seu navegador em: [http://localhost:5000](http://localhost:5000)
 
 4.  **Para Visualizar Logs:**
     ```bash
-    # Docker Compose v2
-    docker compose logs -f
-    # Ou para um serviço específico, ex: webapp
-    # docker compose logs -f webapp
-
-    # Docker Compose v1
-    # docker-compose logs -f
-    # docker-compose logs -f webapp
+    # Docker Compose v2 (ou v1 com hífen)
+    docker compose logs -f               # Logs de todos os serviços
+    docker compose logs -f webapp        # Logs apenas do webapp
+    docker compose logs -f whisper_worker # Logs apenas do worker
     ```
 
 5.  **Para Parar a Aplicação:**
     No diretório raiz do projeto (`transcribe/`):
     ```bash
-    # Docker Compose v2
+    # Docker Compose v2 (ou v1 com hífen)
     docker compose down
-
-    # Docker Compose v1
-    # docker-compose down
     ```
-    Isso removerá os containers, mas os volumes (como `whisper_models`, `videos` e `results` no host) serão preservados.
 
 ### Utilizando a Interface Web
 
-A interface é projetada para ser intuitiva:
-
-1.  **Selecione o Arquivo:** Clique em "Escolher arquivo" e selecione o arquivo de mídia.
-2.  **Escolha o Modelo Whisper:** Selecione na lista suspensa.
-3.  **Clique em "Transcrever":** O arquivo será enviado. Acompanhe o progresso do upload.
-4.  **Acompanhe o Status:** Um novo "job" aparecerá. O status será atualizado automaticamente ("Iniciado" -> "Processando" -> "Concluído").
-5.  **Baixe os Resultados:** Links de download (.txt, .srt, .vtt) aparecerão quando o job estiver "Concluído".
+1.  **Selecione o Arquivo:** Clique em "Escolher arquivo", selecione seu vídeo/áudio.
+2.  **Escolha o Modelo Whisper:** Selecione na lista (ex: `small`, `medium`).
+3.  **Clique em "Transcrever":** O upload iniciará. A UI deve responder rapidamente.
+4.  **Acompanhe o Status:** Um novo job aparecerá na lista com status "Processando". A UI fará polling para atualizar o status.
+5.  **Baixe os Resultados:** Quando "Concluído", links para os arquivos (`.txt`, `.srt`, `.vtt`) estarão disponíveis.
 
 ## 🎤 Uso via Linha de Comando (Alternativo/Avançado)
 
-Embora a interface web seja o método recomendado, você ainda pode interagir com o worker diretamente se necessário, por exemplo, para scripts ou testes. Com o Docker Compose gerenciando os serviços, você pode usar `docker-compose exec`:
-
-1.  Certifique-se de que os serviços estejam rodando (`docker-compose up -d`).
-2.  Coloque o arquivo de vídeo em `transcriber_web_app/videos/`.
-3.  Execute o comando no container `whisper_worker`:
+Para interagir diretamente com o `whisper_worker` (ex: para scripts):
+1.  Certifique-se de que os serviços estão rodando (`docker compose up -d`).
+2.  Coloque o arquivo de vídeo em `./transcriber_web_app/videos/` no host.
+3.  Crie um diretório de resultado no host, ex: `mkdir -p ./transcriber_web_app/results/meu_job_cli`
+4.  Execute o comando no `whisper_worker`:
     ```bash
-    # Exemplo com Docker Compose v2
+    # Docker Compose v2 (ou v1 com hífen)
     docker compose exec -T whisper_worker python3 /app/transcribe.py \
         --video /data/videos/seu_video.mp4 \
         --model small \
-        --output_dir /data/results/cli_job_1
-
-    # Exemplo com Docker Compose v1
-    # docker-compose exec -T whisper_worker python3 /app/transcribe.py \
-    #     --video /data/videos/seu_video.mp4 \
-    #     --model small \
-    #     --output_dir /data/results/cli_job_1
+        --output_dir /data/results/meu_job_cli
     ```
-    *   O script `transcribe.py` está em `/app/` dentro do container `whisper_worker`.
-    *   Os caminhos `/data/videos/` e `/data/results/` são os pontos de montagem dentro do container `whisper_worker`.
-    *   Crie um subdiretório único (ex: `cli_job_1`) para a saída para evitar conflitos com os jobs da web.
+    Os resultados aparecerão em `./transcriber_web_app/results/meu_job_cli/` no host.
 
 ## ⚙️ Detalhes Técnicos
 
 ### `docker-compose.yml`
-
-Arquivo principal de orquestração. Define os serviços `webapp` e `whisper_worker`, suas configurações de build, volumes, portas, rede e dependências. Gerencia o ciclo de vida da aplicação multi-container.
+Orquestra os serviços `webapp` e `whisper_worker`. Define builds, volumes (para vídeos, resultados e cache de modelos Whisper), portas, rede e variáveis de ambiente (como `DOCKER_COMPOSE_PROJECT_NAME` para o `webapp`). Inclui configuração para uso de GPU pelo `whisper_worker`.
 
 ### `transcriber_web_app/Dockerfile.flask`
-
-Define a imagem Docker para o serviço `webapp`.
-*   Baseado em `python:3.10-slim`.
-*   Copia e instala dependências Python de `requirements.txt`.
-*   Copia o código da aplicação Flask (`app.py`, `static/`, `templates/`).
-*   Expõe a porta 5000 e define o comando para iniciar o servidor Flask.
+Define a imagem do `webapp`. Baseada em `python:3.10-slim`, instala dependências Python (Flask, Docker SDK), copia o código da aplicação e o cliente Docker CLI (para que o SDK Docker funcione corretamente com o socket montado).
 
 ### `transcriber_web_app/Dockerfile.whisper`
-
-Define a imagem Docker para o serviço `whisper_worker`.
-*   Baseado em imagem NVIDIA com CUDA para suporte a GPU.
-*   Instala `ffmpeg`, dependências do Whisper (PyTorch, etc.).
-*   Copia o script `transcribe.py`.
-*   Configura o ambiente para transcrição.
+Define a imagem do `whisper_worker`. Baseada em `nvidia/cuda`, instala `ffmpeg`, PyTorch, Whisper e suas dependências. Copia `transcribe.py`. Usa `CMD ["tail", "-f", "/dev/null"]` para manter o container rodando e aguardando comandos `exec`.
 
 ### `transcriber_web_app/app.py`
+Backend Flask. Serve o frontend, gerencia uploads, e usa a biblioteca Python `docker` (via socket Docker montado) para executar `transcribe.py` no container `whisper_worker` de forma não bloqueante (usando threads). Fornece endpoints para status e download.
 
-Backend da aplicação web (Flask).
-*   Serve a interface frontend.
-*   Gerencia uploads de arquivos.
-*   Aciona o `whisper_worker` usando `docker-compose exec` (via `subprocess`).
-*   Fornece endpoints para status de jobs e download de resultados.
+### `transcriber_web_app/transcribe.py`
+Script Python executado no `whisper_worker`. Recebe caminho do vídeo, modelo e diretório de saída como argumentos. Realiza a transcrição usando Whisper e salva os arquivos `.txt`, `.srt`, `.vtt`.
 
-### `transcriber_web_app/run_local_mvp.sh` (Lançador do Docker Compose)
-
-Script auxiliar simplificado para iniciar a aplicação com Docker Compose.
-*   Verifica Docker e Docker Compose.
-*   Cria pastas de volume no host se não existirem.
-*   Executa `docker-compose up --build -d`.
-*   Fornece instruções de log e parada.
-
-### `setup.sh` (Configuração Base CLI Antiga)
-
-Script Bash anteriormente usado para configurar o ambiente Docker para uso via CLI e construir a imagem Docker monolítica. Com Docker Compose, seu papel principal agora é auxiliar na configuração do ambiente Docker do host (especialmente para GPU NVIDIA no Linux/WSL), se necessário. A construção das imagens é gerenciada pelo Docker Compose.
-
-### `Instalador_Whisper.ps1` (Configuração Base Windows)
-
-Script PowerShell para usuários Windows. Continua útil para:
-*   Automatizar a configuração do WSL2 e Ubuntu.
-*   Clonar o repositório.
-*   Auxiliar na configuração do Docker e dos drivers NVIDIA no ambiente WSL, preparando o terreno para `docker-compose`.
+### `transcriber_web_app/run_local_mvp.sh`
+Script auxiliar para simplificar o início dos serviços com `docker compose up --build -d`. Também verifica Docker/Docker Compose e cria as pastas de volume no host.
 
 ---
 
 🤝 Contribuição
 ---------------
-
 Contribuições são bem-vindas! Siga o processo padrão de fork, branch, commit e Pull Request.
 
 ---
 
 📄 Licença
 ----------
-
 Este projeto está licenciado sob a Licença MIT. Consulte o arquivo `LICENSE`.
 
 ---
 
 ✉️ Contato
 ----------
-
 Abra uma "Issue" no GitHub: [https://github.com/malvesro/transcribe/issues](https://github.com/malvesro/transcribe/issues)
