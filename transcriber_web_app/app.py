@@ -96,8 +96,9 @@ def upload_and_transcribe():
         # Comando para executar a transcrição via docker-compose exec
         # O serviço é 'whisper_worker' conforme definido no docker-compose.yml
         # O script transcribe.py está em /app/transcribe.py dentro do container whisper_worker (conforme Dockerfile.whisper)
+        # Usar "docker compose" (sem hífen) pois instalamos o plugin v2 no Dockerfile.flask
         docker_compose_command = [
-            "docker-compose", "exec", "-T", # -T desabilita pseudo-TTY, bom para scripts
+            "docker", "compose", "exec", "-T", # -T desabilita pseudo-TTY, bom para scripts
             "whisper_worker",               # Nome do serviço no docker-compose.yml
             "python3", "/app/transcribe.py", # Comando a ser executado no worker
             "--video", video_path_in_worker,

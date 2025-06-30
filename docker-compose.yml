@@ -12,6 +12,8 @@ services:
       - ./transcriber_web_app/results:/app/results
       # Para desenvolvimento, pode-se montar o código fonte da app Flask:
       # - ./transcriber_web_app:/app
+      # Montar o socket Docker para permitir que este container execute comandos docker/docker-compose
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=development # ou production para produção
