@@ -1,117 +1,81 @@
 #!/bin/bash
-# Script simplificado para iniciar o MVP local
+# Script para iniciar a aplicação Transcriber Web App com Docker Compose.
 
-LOG_FILE="mvp_setup.log"
-IMAGE_NAME="whisper-transcriber" # Nome da imagem do seu Dockerfile
+LOG_FILE="mvp_compose_setup.log"
+PROJECT_DIR_NAME="transcriber_web_app" # Nome do diretório onde estão videos/ e results/
 
-# Funções de log simplificadas para este script
+# Funções de log
 log_info() { echo "$(date +"%Y-%m-%d %H:%M:%S") [INFO] $1" | tee -a "$LOG_FILE"; }
 log_error() { echo "$(date +"%Y-%m-%d %H:%M:%S") [ERROR] $1" | tee -a "$LOG_FILE"; exit 1; }
 log_warning() { echo "$(date +"%Y-%m-%d %H:%M:%S") [WARNING] $1" | tee -a "$LOG_FILE"; }
 
-# 0. Navegar para o diretório do script
-# Isso garante que os caminhos relativos (Dockerfile, requirements.txt) funcionem
-cd "$(dirname "$0")" || exit
+# 0. Navegar para o diretório raiz do projeto (onde está o docker-compose.yml)
+# Este script está em transcriber_web_app/, então precisamos subir um nível.
+cd "$(dirname "$0")/.." || exit
 
 # Limpar log antigo no início da execução
 > "$LOG_FILE"
 
-log_info "Iniciando script run_local_mvp.sh..."
+log_info "Iniciando script run_local_mvp.sh (baseado em Docker Compose)..."
 
-# 1. Verificar Docker
+# 1. Verificar Docker e Docker Compose
 log_info "Verificando o status do Docker..."
 if ! docker info &> /dev/null; then
     log_error "O Docker não está em execução! Por favor, inicie o Docker Desktop/Daemon e tente novamente."
 fi
-log_info "Docker está em execução. Ótimo!"
+log_info "Docker está em execução."
 
-# 2. Criar pastas necessárias (se não existirem dentro de transcriber_web_app)
-log_info "Verificando/criando pastas 'videos/' e 'results/'..."
-mkdir -p videos || log_error "Falha ao criar pasta 'videos/'."
-mkdir -p results || log_error "Falha ao criar pasta 'results/'."
-log_info "Pastas criadas."
-
-# 3. Construir a imagem Docker do Whisper (se não existir)
-log_info "Verificando a imagem Docker '${IMAGE_NAME}'..."
-if ! docker image inspect "$IMAGE_NAME" &> /dev/null; then
-    log_info "Imagem '${IMAGE_NAME}' não encontrada. Construindo agora (pode levar alguns minutos)..."
-    # Assume que Dockerfile está no mesmo diretório que este script
-    if ! docker build -t "$IMAGE_NAME" -f Dockerfile .; then
-        log_error "Falha no build da imagem Docker '${IMAGE_NAME}'. Verifique o Dockerfile e a conexão com a internet."
-    fi
-    log_info "Imagem Docker '${IMAGE_NAME}' construída com sucesso."
+log_info "Verificando se Docker Compose (v1 ou v2) está instalado..."
+if command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+    log_info "Docker Compose (v1 'docker-compose') encontrado."
+elif docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+    log_info "Docker Compose (v2 'docker compose') encontrado."
 else
-    log_info "Imagem Docker '${IMAGE_NAME}' já existe. Pulando build."
+    log_error "Docker Compose não encontrado. Por favor, instale Docker Compose (v1 ou v2) e tente novamente. Consulte: https://docs.docker.com/compose/install/"
 fi
 
-# 4. Verificar e instalar Python3 e Pip3
-log_info "Verificando instalação do Python3 e Pip3..."
+# 2. Criar pastas necessárias no host (se não existirem)
+# Estas pastas são mapeadas como volumes no docker-compose.yml
+# O docker-compose.yml espera que ./transcriber_web_app/videos e ./transcriber_web_app/results existam
+# em relação à localização do docker-compose.yml (raiz do projeto).
+HOST_VIDEOS_DIR="${PROJECT_DIR_NAME}/videos"
+HOST_RESULTS_DIR="${PROJECT_DIR_NAME}/results"
 
-# Verificar Python3
-if ! command -v python3 &> /dev/null; then
-    log_error "Python3 não encontrado. Por favor, instale o Python3 primeiro. Em sistemas baseados em Debian/Ubuntu, use: sudo apt update && sudo apt install python3"
-fi
-log_info "Python3 encontrado."
+log_info "Verificando/criando pastas no host: '${HOST_VIDEOS_DIR}/' e '${HOST_RESULTS_DIR}/'..."
+mkdir -p "${HOST_VIDEOS_DIR}" || log_error "Falha ao criar pasta '${HOST_VIDEOS_DIR}/' no host."
+mkdir -p "${HOST_RESULTS_DIR}" || log_error "Falha ao criar pasta '${HOST_RESULTS_DIR}/' no host."
+log_info "Pastas do host verificadas/criadas."
 
-# Verificar Pip3
-if ! command -v pip3 &> /dev/null; then
-    log_warning "Pip3 não encontrado. Tentando instalar python3-pip..."
-    # Tentar instalar python3-pip (comum para Debian/Ubuntu)
-    if sudo apt update && sudo apt install -y python3-pip; then
-        log_info "python3-pip instalado com sucesso."
-        # Verifica novamente se pip3 agora está disponível
-        if ! command -v pip3 &> /dev/null; then
-             log_error "Pip3 ainda não foi encontrado após a tentativa de instalação. Verifique a instalação do python3-pip ou instale pip manualmente."
-        fi
-    else
-        log_error "Falha ao instalar python3-pip. Por favor, instale pip3 manualmente e tente novamente."
-    fi
+# 3. Iniciar os serviços com Docker Compose
+log_info "Iniciando serviços definidos em docker-compose.yml (webapp e whisper_worker)..."
+log_info "Isso pode levar algum tempo na primeira execução para construir as imagens."
+
+# Usar --build para garantir que as imagens sejam (re)construídas se houver alterações nos Dockerfiles.
+# Usar -d para rodar em modo detached (background).
+# $COMPOSE_CMD é 'docker-compose' ou 'docker compose'
+if $COMPOSE_CMD up --build -d; then
+    log_info "Serviços Docker Compose iniciados com sucesso em modo detached."
 else
-    log_info "Pip3 encontrado."
+    log_error "Falha ao iniciar os serviços Docker Compose. Verifique os logs acima ou execute '$COMPOSE_CMD up --build' sem '-d' para ver os erros."
 fi
 
-# 5. Instalar dependências Python para o backend
-log_info "Instalando dependências Python para o servidor web usando pip3..."
-# Assume que requirements.txt está no mesmo diretório que este script
-if [ -f "requirements.txt" ]; then
-    pip3 install -r requirements.txt || log_error "Falha ao instalar dependências Python de requirements.txt usando pip3."
-else
-    log_error "Arquivo requirements.txt não encontrado no diretório do script."
-fi
-log_info "Dependências Python instaladas."
+log_info "Aplicação web deve estar acessível em http://localhost:5000 em breve."
+log_info "Para ver os logs dos containers, use: '$COMPOSE_CMD logs -f'"
+log_info "Para parar os serviços, use: '$COMPOSE_CMD down'"
+echo ""
+echo "--------------------------------------------------------------------"
+echo " Aplicação Transcriber Web App iniciada com Docker Compose!"
+echo ""
+echo " Acesse: http://localhost:5000"
+echo ""
+echo " Logs dos containers: $COMPOSE_CMD logs -f"
+echo " (Use '$COMPOSE_CMD logs -f webapp' para ver apenas os logs da webapp)"
+echo ""
+echo " Para parar todos os serviços: $COMPOSE_CMD down"
+echo " (Execute este comando no diretório que contém o docker-compose.yml)"
+echo "--------------------------------------------------------------------"
 
-# 6. Iniciar o servidor Flask
-log_info "Iniciando o servidor web Flask em http://localhost:5000..."
-# Define FLASK_APP para o Flask encontrar o ponto de entrada (app.py no mesmo diretório)
-export FLASK_APP=app.py
-# Executa o Flask no modo de desenvolvimento para logs detalhados
-# Redirecionar stdout e stderr do Flask para o arquivo de log principal e para o terminal
-flask run --host=0.0.0.0 --port=5000 >> "$LOG_FILE" 2>&1 &
-FLASK_PID=$! # Captura o PID do processo Flask
-
-log_info "Servidor Flask iniciado (PID: $FLASK_PID). Verifique os logs em ${LOG_FILE}."
-log_info "Abrindo navegador em 3 segundos..."
-
-# Espera um pouco para o servidor Flask iniciar antes de tentar abrir o navegador
-sleep 3
-
-# Abrir o navegador automaticamente (funciona na maioria dos SOs)
-if command -v xdg-open >/dev/null 2>&1; then
-    xdg-open http://localhost:5000
-elif command -v open >/dev/null 2>&1; then # macOS
-    open http://localhost:5000
-elif command -v start >/dev/null 2>&1; then # Windows (via cmd.exe no Git Bash/WSL)
-    start http://localhost:5000
-else
-    log_info "Não foi possível abrir o navegador automaticamente. Acesse http://localhost:5000 manualmente."
-fi
-
-log_info "Setup do MVP concluído. O servidor Flask está rodando com PID: $FLASK_PID."
-echo "O servidor Flask está em execução. Logs disponíveis em: $(pwd)/${LOG_FILE}"
-echo "Pressione [Ctrl+C] neste terminal para parar o servidor Flask."
-
-# Mantém o script em execução para que o usuário possa ver os logs do Flask e parar com Ctrl+C
-# O 'wait' aguarda o processo Flask terminar, o que só acontecerá se for morto externamente
-# ou se o flask run falhar.
-wait "$FLASK_PID"
-log_info "Servidor Flask (PID: $FLASK_PID) foi parado."
+# O script termina aqui, pois os containers estão rodando em background.
+# O usuário pode usar os comandos de log e down conforme instruído.
