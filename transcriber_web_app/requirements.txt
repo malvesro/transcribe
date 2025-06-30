@@ -1,0 +1,4 @@
+Flask>=2.0
+python-dotenv>=0.15
+requests>=2.20 # Adicionando requests para chamadas AJAX no futuro, se necessário pelo frontend ou para comunicação interna.
+Werkzeug>=2.0 # Adicionando para garantir compatibilidade e funcionalidades de upload seguro.

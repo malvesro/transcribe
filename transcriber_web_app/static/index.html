@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Transcriber MVP</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Transcrever Áudio/Vídeo com Whisper</h1>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="videoFile">Selecione o arquivo de mídia:</label>
+                <input type="file" id="videoFile" name="videoFile" accept=".mp4,.m4a,.mp3,.wav,.mov,.avi,.flac,.ogg,.aac" required>
+            </div>
+
+            <div class="form-group">
+                <label for="modelSize">Escolha o modelo Whisper:</label>
+                <select id="modelSize" name="modelSize">
+                    <option value="tiny">Tiny</option>
+                    <option value="base">Base</option>
+                    <option value="small" selected>Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                    <option value="large-v2">Large-v2</option>
+                    <option value="large-v3">Large-v3</option>
+                </select>
+            </div>
+
+            <button type="submit" id="submitButton">Transcrever</button>
+        </form>
+
+        <div id="uploadProgress" class="progress-container" style="display: none;">
+            <p>Enviando arquivo: <span id="uploadPercentage">0%</span></p>
+            <div class="progress-bar-background">
+                <div id="progressBar" class="progress-bar-foreground"></div>
+            </div>
+        </div>
+
+        <div id="transcriptionStatus">
+            <h2>Status das Transcrições</h2>
+            <ul id="jobsList">
+                <!-- Os status dos jobs serão adicionados aqui pelo JavaScript -->
+            </ul>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
