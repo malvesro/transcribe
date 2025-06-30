@@ -25,21 +25,21 @@ if ! docker info &> /dev/null; then
 fi
 log_info "Docker está em execução."
 
-log_info "Verificando se Docker Compose (v1 ou v2) está instalado..."
-if command -v docker-compose &> /dev/null; then
-    COMPOSE_CMD="docker-compose"
-    log_info "Docker Compose (v1 'docker-compose') encontrado."
-elif docker compose version &> /dev/null; then
+log_info "Verificando se Docker Compose (v2 ou v1) está instalado..."
+# Prioriza Docker Compose v2 (docker compose)
+if docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
     log_info "Docker Compose (v2 'docker compose') encontrado."
+# Fallback para Docker Compose v1 (docker-compose)
+elif command -v docker-compose &> /dev/null; then
+    COMPOSE_CMD="docker-compose"
+    log_info "Docker Compose (v1 'docker-compose') encontrado."
 else
-    log_error "Docker Compose não encontrado. Por favor, instale Docker Compose (v1 ou v2) e tente novamente. Consulte: https://docs.docker.com/compose/install/"
+    log_error "Docker Compose não encontrado. Por favor, instale Docker Compose (v2 'docker compose' é recomendado) e tente novamente. Consulte: https://docs.docker.com/compose/install/"
 fi
+log_info "Usando comando: '$COMPOSE_CMD'"
 
 # 2. Criar pastas necessárias no host (se não existirem)
-# Estas pastas são mapeadas como volumes no docker-compose.yml
-# O docker-compose.yml espera que ./transcriber_web_app/videos e ./transcriber_web_app/results existam
-# em relação à localização do docker-compose.yml (raiz do projeto).
 HOST_VIDEOS_DIR="${PROJECT_DIR_NAME}/videos"
 HOST_RESULTS_DIR="${PROJECT_DIR_NAME}/results"
 
@@ -52,9 +52,6 @@ log_info "Pastas do host verificadas/criadas."
 log_info "Iniciando serviços definidos em docker-compose.yml (webapp e whisper_worker)..."
 log_info "Isso pode levar algum tempo na primeira execução para construir as imagens."
 
-# Usar --build para garantir que as imagens sejam (re)construídas se houver alterações nos Dockerfiles.
-# Usar -d para rodar em modo detached (background).
-# $COMPOSE_CMD é 'docker-compose' ou 'docker compose'
 if $COMPOSE_CMD up --build -d; then
     log_info "Serviços Docker Compose iniciados com sucesso em modo detached."
 else
@@ -76,6 +73,3 @@ echo ""
 echo " Para parar todos os serviços: $COMPOSE_CMD down"
 echo " (Execute este comando no diretório que contém o docker-compose.yml)"
 echo "--------------------------------------------------------------------"
-
-# O script termina aqui, pois os containers estão rodando em background.
-# O usuário pode usar os comandos de log e down conforme instruído.
