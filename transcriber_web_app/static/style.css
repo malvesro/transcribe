@@ -291,3 +291,26 @@ button[type="submit"]:disabled {
     transform: translateY(-1px); /* Efeito sutil de elevação */
 }
 /* .download-link i { margin-right: 0.3rem; } */
+
+/* Estilos para a barra de progresso da transcrição */
+.transcription-progress-container {
+    margin-top: 0.75rem;
+    margin-bottom: 0.5rem;
+}
+
+.progress-status-text {
+    display: block;
+    font-size: 0.8rem; /* Pequeno */
+    color: var(--color-text-secondary);
+    margin-bottom: 0.25rem;
+    line-height: 1.2;
+}
+
+/* Reutilizando .progress-bar-background, mas a barra interna terá classe específica */
+.transcription-progress-bar {
+    width: 0%;
+    height: 100%; /* A altura será definida pelo .progress-bar-background pai */
+    background-color: var(--color-primary);
+    border-radius: var(--border-radius-sm); /* Herdará do pai se o pai tiver overflow:hidden e border-radius */
+    transition: width 0.3s ease-in-out; /* Transição suave */
+}

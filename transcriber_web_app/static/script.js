@@ -112,6 +112,12 @@ document.addEventListener('DOMContentLoaded', () => {
                     <span class="status-badge status-initiated">${initialStatus}</span>
                     <span class="spinner" style="display: none;"></span>
                 </span>
+                <div class="transcription-progress-container" style="display: none; margin-top: 0.75rem;">
+                    <span class="progress-status-text" style="font-size: 0.8em; color: var(--color-text-secondary);">Aguardando progresso...</span>
+                    <div class="progress-bar-background" style="height: 8px;">
+                        <div class="transcription-progress-bar" style="width: 0%;"></div>
+                    </div>
+                </div>
             </div>
             <div class="result-links" style="display: none;">
                 <strong>Downloads:</strong>
@@ -119,29 +125,59 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         jobsList.prepend(listItem); // Adiciona no início da lista
-        updateJobStatusDisplay(jobId, initialStatus); // Para garantir que o spinner apareça se for "Processando"
+        // Passar um objeto 'data' placeholder com progresso inicial.
+        // O status inicial é "Iniciado", então o progresso pode ser 0 ou um valor pequeno.
+        updateJobStatusDisplay(jobId, initialStatus, [], {
+            progress: {
+                percentage: 0,
+                status_text: initialStatus
+            }
+        });
     }
 
-    function updateJobStatusDisplay(jobId, statusText, files = []) {
+    function updateJobStatusDisplay(jobId, statusText, files = [], data = {}) { // data = {} é o default
         const jobElement = document.getElementById(`job-${jobId}`);
         if (!jobElement) return;
+
+        // Garante que data e data.progress existam antes de tentar acessá-los profundamente
+        const currentProgress = (data && data.progress) ? data.progress : { percentage: 0, status_text: statusText };
 
         const statusBadgeElement = jobElement.querySelector('.status-badge');
         const spinnerElement = jobElement.querySelector('.spinner');
         const resultLinksDiv = jobElement.querySelector('.result-links');
+        // Elementos da barra de progresso da transcrição
+        const transcriptionProgressContainer = jobElement.querySelector('.transcription-progress-container');
+        const transcriptionProgressBar = jobElement.querySelector('.transcription-progress-bar');
+        const transcriptionProgressText = jobElement.querySelector('.progress-status-text');
 
         // Limpar classes de status antigas
         statusBadgeElement.classList.remove('status-initiated', 'status-processing', 'status-completed', 'status-error', 'status-not-found');
         statusBadgeElement.textContent = statusText;
 
+        // Atualizar barra de progresso da transcrição
+        if ((statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado")) {
+            transcriptionProgressContainer.style.display = 'block';
+            transcriptionProgressBar.style.width = `${currentProgress.percentage}%`;
+            transcriptionProgressText.textContent = currentProgress.status_text || statusText; // Usa statusText principal se progress.status_text não existir
+        } else if (statusText.toLowerCase() === "concluído") {
+            transcriptionProgressContainer.style.display = 'block';
+            transcriptionProgressBar.style.width = '100%';
+            transcriptionProgressText.textContent = "Concluído!";
+        } else {
+            transcriptionProgressContainer.style.display = 'none';
+        }
+
         if (statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado") {
             statusBadgeElement.classList.add(statusText.toLowerCase() === "processando" ? 'status-processing' : 'status-initiated');
             spinnerElement.style.display = 'inline-block';
             resultLinksDiv.style.display = 'none';
-            resultLinksDiv.innerHTML = '<strong>Downloads:</strong>'; // Limpa links antigos
+            resultLinksDiv.innerHTML = '<strong>Downloads:</strong>';
+
         } else if (statusText.toLowerCase() === "concluído") {
             statusBadgeElement.classList.add('status-completed');
             spinnerElement.style.display = 'none';
+            // A lógica da barra de progresso para "Concluído" já está acima
+
             if (files.length > 0) {
                 resultLinksDiv.innerHTML = '<strong>Downloads:</strong> '; // Limpa e recria
                 files.forEach(file => {
@@ -161,7 +197,8 @@ document.addEventListener('DOMContentLoaded', () => {
             clearJobPolling(jobId);
         } else { // Erro, Não encontrado, etc.
             statusBadgeElement.classList.add(statusText.toLowerCase() === "não encontrado" ? 'status-not-found' : 'status-error');
-            spinnerElement.style.display = 'none';
+            spinnerElement.style.display = 'none'; // Esconder spinner
+            transcriptionProgressContainer.style.display = 'none'; // Esconder barra de progresso
             resultLinksDiv.style.display = 'none';
             // Parar polling para este job
             clearJobPolling(jobId);
@@ -182,9 +219,10 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(`/status/${jobId}`);
             if (response.ok) {
                 const data = await response.json();
-                updateJobStatusDisplay(jobId, data.status, data.files);
+                // Passar o objeto data completo para updateJobStatusDisplay
+                updateJobStatusDisplay(jobId, data.status, data.files, data);
             } else if (response.status === 404) {
-                updateJobStatusDisplay(jobId, "Não encontrado");
+                updateJobStatusDisplay(jobId, "Não encontrado", [], { progress: { percentage: 0, status_text: "Job não encontrado." } });
             } else {
                 console.error(`Erro HTTP ${response.status} ao buscar status para job ${jobId}: ${response.statusText}`);
                 // Opcional: não parar polling em erros genéricos de servidor, pode ser temporário
@@ -198,15 +236,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function monitorJobStatus(jobId) {
-        if (monitoredJobs.has(jobId) && pollingIntervals[jobId]) { // Checa se já existe um intervalo ativo
+        console.log("monitorJobStatus chamado para job_id:", jobId); // DEBUG
+        console.log("monitoredJobs antes de adicionar:", Array.from(monitoredJobs)); // DEBUG
+        console.log("pollingIntervals[jobId] antes de setar:", pollingIntervals[jobId]); // DEBUG
+
+        if (monitoredJobs.has(jobId) && pollingIntervals[jobId]) {
+            console.log("Polling para job_id:", jobId, "já ativo. Retornando."); // DEBUG
             return;
         }
         monitoredJobs.add(jobId);
 
         fetchJobStatus(jobId); // Chamada inicial
 
+        console.log("Configurando setInterval para job_id:", jobId); // DEBUG
         pollingIntervals[jobId] = setInterval(() => {
             fetchJobStatus(jobId);
-        }, 5000); // 5 segundos
+        }, 5000);
     }
 });

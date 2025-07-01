@@ -3,6 +3,7 @@ import uuid
 import logging
 import docker
 import threading # Adicionada importação para threading
+import json # Adicionado para ler o _progress.json
 from flask import Flask, request, jsonify, send_from_directory
 
 logging.basicConfig(level=logging.INFO)
@@ -38,6 +39,11 @@ def allowed_file(filename):
 @app.route('/')
 def index():
     return send_from_directory(app.static_folder, 'index.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    # Retorna 204 No Content para evitar erros 404 no console se não houver favicon
+    return '', 204
 
 def run_transcription_in_thread(job_id, worker_container_name, transcribe_command_list):
     """
@@ -196,12 +202,26 @@ def get_status(job_id):
 
         if not output_files:
             logger.debug(f"JOB_ID: {job_id} - Status check: Processando, nenhum arquivo de resultado encontrado em '{job_results_path_in_app}'.")
-            return jsonify({"job_id": job_id, "status": "Processando", "files": []})
+            # Ler informações de progresso se estiver processando
+            progress_data = {"percentage": 0, "status_text": "Processando..."} # Default
+            progress_file_path = os.path.join(job_results_path_in_app, "_progress.json")
+            if os.path.exists(progress_file_path):
+                try:
+                    with open(progress_file_path, 'r') as pf:
+                        progress_info = json.load(pf)
+                        progress_data["percentage"] = progress_info.get("percentage", 0)
+                        progress_data["status_text"] = progress_info.get("status_text", "Processando...")
+                    logger.debug(f"JOB_ID: {job_id} - Progresso lido: {progress_data}")
+                except Exception as e_progress:
+                    logger.error(f"JOB_ID: {job_id} - Erro ao ler arquivo de progresso '{progress_file_path}': {e_progress}")
+            return jsonify({"job_id": job_id, "status": "Processando", "files": [], "progress": progress_data})
         else:
             logger.info(f"JOB_ID: {job_id} - Status check: Concluído. Arquivos: {[f['filename'] for f in output_files]}.")
-            return jsonify({"job_id": job_id, "status": "Concluído", "files": output_files})
+            # Se concluído, o progresso é 100%
+            progress_data = {"percentage": 100, "status_text": "Concluído"}
+            return jsonify({"job_id": job_id, "status": "Concluído", "files": output_files, "progress": progress_data})
 
-    except FileNotFoundError:
+    except FileNotFoundError: # Se o diretório do job em si não for encontrado (improvável depois do if inicial, mas para segurança)
         logger.warning(f"JOB_ID: {job_id} - Status check: Diretório de resultados desapareceu de '{job_results_path_in_app}'.")
         return jsonify({"job_id": job_id, "status": "Erro (diretório sumiu)", "files": []}), 404
     except Exception as e:

@@ -65,6 +65,13 @@
                             <span class="status-badge status-processing">Processando</span>
                             <span class="spinner" style="display: none;"></span>
                         </span>
+                <!-- Container para a barra de progresso da transcrição -->
+                <div class="transcription-progress-container" style="display: none; margin-top: 0.5rem;">
+                    <span class="progress-status-text" style="font-size: 0.8em; color: var(--color-text-secondary);"></span>
+                    <div class="progress-bar-background" style="height: 8px;">
+                        <div class="transcription-progress-bar" style="width: 0%; height: 100%; background-color: var(--color-primary); border-radius: var(--border-radius-sm); transition: width 0.2s ease-in-out;"></div>
+                    </div>
+                </div>
                     </div>
                     <div class="result-links" style="display: none;">
                         <strong>Downloads:</strong>
