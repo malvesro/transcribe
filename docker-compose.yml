@@ -1,0 +1,56 @@
+services:
+  webapp:
+    build:
+      context: ./transcriber_web_app
+      dockerfile: Dockerfile.flask
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./transcriber_web_app/videos:/app/videos
+      - ./transcriber_web_app/results:/app/results
+      # Para desenvolvimento, pode-se montar o código fonte da app Flask:
+      # - ./transcriber_web_app:/app
+      # Montar o socket Docker para permitir que este container execute comandos docker/docker-compose
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - FLASK_APP=app.py
+      - FLASK_ENV=development # ou production para produção
+      # Passa o nome do projeto Docker Compose para dentro do container webapp
+      - DOCKER_COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+      # Adicionar outras variáveis de ambiente necessárias para o app.py
+    depends_on:
+      - whisper_worker # Garante que o worker seja iniciado, embora a chamada seja síncrona via API Docker
+    networks:
+      - transcriber_network
+
+  whisper_worker:
+    build:
+      context: ./transcriber_web_app
+      dockerfile: Dockerfile.whisper
+    volumes:
+      - ./transcriber_web_app/videos:/data/videos:ro # :ro para read-only, já que o worker não deve modificar o vídeo original
+      - ./transcriber_web_app/results:/data/results
+      - whisper_models:/root/.cache/whisper # Volume nomeado para cache de modelos Whisper
+      # Para GPU (NVIDIA):
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # ou o número de GPUs que deseja alocar
+              capabilities: [gpu]
+    # Se não estiver usando deploy (ex: Swarm), a configuração de GPU para Compose v2+ pode ser:
+    # runtime: nvidia # Se nvidia-container-runtime estiver configurado como padrão no Docker daemon
+    # environment:
+    #   - NVIDIA_VISIBLE_DEVICES=all # Ou IDs específicos de GPU
+    #   - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    networks:
+      - transcriber_network
+
+volumes:
+  whisper_models:
+    # driver: local # Opcional, local é o padrão
+
+networks:
+  transcriber_network:
+    driver: bridge

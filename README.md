@@ -1,11 +1,12 @@
-# 🎙️ Whisper Transcriber com Docker
+# 🎙️ Whisper Transcriber: Interface Web com Docker Compose
 
 <p align="center">
   <a href="https://github.com/malvesro/transcribe">
     <img src="https://img.shields.io/badge/GitHub-malvesro%2Ftranscribe-blue?style=for-the-badge&logo=github" alt="Repositório GitHub">
   </a>
   <img src="https://img.shields.io/badge/Python-3.10+-blue?style=for-the-badge&logo=python" alt="Python Version">
-  <img src="https://img.shields.io/badge/Docker-Compatible-blue?style=for-the-badge&logo=docker" alt="Docker Compatible">
+  <img src="https://img.shields.io/badge/Docker%20Compose-WebApp%20%26%20Worker-orange?style=for-the-badge&logo=docker" alt="Docker Compose">
+  <img src="https://img.shields.io/badge/Flask-WebApp-orange?style=for-the-badge&logo=flask" alt="Flask WebApp">
   <img src="https://img.shields.io/badge/GPU-NVIDIA%20CUDA-green?style=for-the-badge&logo=nvidia" alt="NVIDIA CUDA Compatible">
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
 </p>
@@ -13,17 +14,26 @@
 ## 📄 Sumário
 
 * [Visão Geral](#-visão-geral)
-* [Funcionalidades](#-funcionalidades)
+* [Arquitetura da Solução](#-arquitetura-da-solução)
+* [Recursos Principais](#-recursos-principais)
 * [Pré-requisitos](#-pré-requisitos)
-* [Como Começar](#-como-começar)
+* [Guia de Início Rápido](#-guia-de-início-rápido)
   * [Estrutura do Projeto](#estrutura-do-projeto)
-  * [Executando o Setup Inicial](#executando-o-setup-inicial)
-* [Uso da Ferramenta](#-uso-da-ferramenta)
-  * [Exemplos de Transcrição](#exemplos-de-transcrição)
-  * [Detalhes sobre os Modelos Whisper](#detalhes-sobre-os-modelos-whisper)
-* [Detalhes Técnicos](#-detalhes-técnicos)
-  * [`setup.sh`](#setupsh)
-  * [`Instalador_Whisper.ps1`](#instalador_whisperps1)
+  * [Configuração do Ambiente Host (Opcional)](#configuração-do-ambiente-host-opcional)
+  * [Executando a Aplicação](#executando-a-aplicação)
+* [Utilizando a Interface Web](#-utilizando-a-interface-web)
+* [Detalhes Técnicos dos Componentes](#-detalhes-técnicos-dos-componentes)
+  * [`docker-compose.yml`](#docker-composeyml)
+  * [Serviço `webapp` (Flask)](#serviço-webapp-flask)
+    *   [`transcriber_web_app/Dockerfile.flask`](#transcriber_web_appdockerfileflask)
+    *   [`transcriber_web_app/app.py`](#transcriber_web_appapppy)
+    *   [`transcriber_web_app/static/`](#transcriber_web_appstatic)
+  * [Serviço `whisper_worker`](#serviço-whisper_worker)
+    *   [`transcriber_web_app/Dockerfile.whisper`](#transcriber_web_appdockerfilewhisper)
+    *   [`transcriber_web_app/transcribe.py`](#transcriber_web_apptranscribepy)
+  * [Script Auxiliar `run_local_mvp.sh`](#script-auxiliar-run_local_mvpsh)
+* [Considerações de Segurança](#-considerações-de-segurança)
+* [Uso via Linha de Comando (Avançado)](#-uso-via-linha-de-comando-avançado)
 * [Contribuição](#-contribuição)
 * [Licença](#-licença)
 * [Contato](#-contato)
@@ -32,233 +42,244 @@
 
 ## 💡 Visão Geral
 
-Este projeto oferece uma solução simplificada e robusta para transcrever áudios de vídeos em português utilizando o modelo **Whisper** da OpenAI, tudo dentro de um ambiente isolado e otimizado com **Docker**.
+Este projeto fornece uma solução robusta e amigável para **transcrição de áudio e vídeo utilizando o modelo Whisper da OpenAI**. A arquitetura foi modernizada para usar **Docker Compose**, orquestrando dois serviços principais: uma **interface web intuitiva (Flask)** e um **worker Whisper dedicado** para processamento eficiente.
 
-Chega de instalações complexas de Python, PyTorch, CUDA ou `ffmpeg` diretamente no seu sistema! Todo o ambiente é empacotado em um contêiner Docker, o que garante isolamento, portabilidade e uma configuração descomplicada, especialmente para usuários que desejam aproveitar a aceleração de hardware (GPU NVIDIA). Para usuários Windows, o script **`Instalador_Whisper.ps1`** oferece uma experiência de setup **totalmente automatizada**, cuidando da instalação do WSL/Ubuntu e da preparação do ambiente. Em seguida, o `setup.sh` configura o ambiente Docker e os atalhos (`aliases`) no seu terminal para você começar a transcrever seus vídeos em português rapidamente.
+A interface web permite que usuários façam upload de arquivos de mídia, selecionem o modelo Whisper, acompanhem o progresso da transcrição em tempo real (com uma barra de progresso por etapas) e baixem os resultados nos formatos TXT, SRT e VTT.
 
-## 🚀 Funcionalidades
+O uso do Docker Compose garante isolamento, consistência entre ambientes e facilita a manutenção e futuras evoluções do projeto.
 
-* **Transcrições de Alta Qualidade:** Utiliza o modelo Whisper da OpenAI, conhecido por sua precisão na transcrição de áudio para texto.
-* **Aceleração por GPU:** Suporte integrado para GPUs NVIDIA via CUDA e Docker para transcrições mais rápidas (se sua máquina possuir uma GPU compatível).
-* **Ambiente Isolado:** Todas as dependências são gerenciadas dentro de um contêiner Docker, evitando conflitos com outras ferramentas instaladas no seu sistema.
-* **Setup Automatizado:** Scripts (`Instalador_Whisper.ps1` para Windows e `setup.sh` para WSL/Linux) que automatizam a maioria das etapas de configuração.
-* **Fácil de Usar:** Atalhos de terminal (`transcribe` e `transcribegpu`) para executar as transcrições com comandos simples.
-* **Suporte a Diversos Formatos:** Graças ao `ffmpeg` incluído na imagem Docker, ele pode transcrever áudio de diversos formatos de vídeo e áudio.
-* **Pré-carregamento do Modelo:** O modelo `small` do Whisper é pré-carregado na imagem Docker para economizar tempo no primeiro uso.
+## 🏗️ Arquitetura da Solução
+
+A aplicação é orquestrada pelo `docker-compose.yml` e consiste em:
+
+1.  **Serviço `webapp`:**
+    *   **Interface Web (Frontend):** Construída com HTML, CSS e JavaScript puro, servida pelo Flask.
+    *   **Servidor de Aplicação (Backend):** Uma aplicação Flask (Python) que gerencia:
+        *   Uploads de arquivos de mídia.
+        *   Criação e gerenciamento de jobs de transcrição.
+        *   Comunicação com o serviço `whisper_worker` através da API Docker (via socket Docker montado) para iniciar as transcrições. A execução do worker é disparada em uma thread separada para não bloquear a interface.
+        *   Fornecimento de status de jobs (incluindo progresso por etapas) e download dos arquivos de resultado.
+    *   **Dockerfile:** `transcriber_web_app/Dockerfile.flask`.
+
+2.  **Serviço `whisper_worker`:**
+    *   **Ambiente de Transcrição:** Contém o modelo Whisper da OpenAI, PyTorch, CUDA (para aceleração por GPU, se disponível), `ffmpeg` e outras dependências necessárias.
+    *   **Processamento:** Executa o script `transcriber_web_app/transcribe.py` para realizar a transcrição.
+    *   **Relato de Progresso:** O script `transcribe.py` foi modificado para registrar o progresso em etapas em um arquivo `_progress.json` dentro da pasta de resultados do job.
+    *   **Dockerfile:** `transcriber_web_app/Dockerfile.whisper`. O container é mantido em execução (com `CMD ["tail", "-f", "/dev/null"]`) para aguardar comandos.
+
+**Comunicação e Dados:**
+*   **Volumes Compartilhados:**
+    *   `./transcriber_web_app/videos/`: Armazena os arquivos de mídia enviados. Acessível por ambos os serviços.
+    *   `./transcriber_web_app/results/`: Armazena os arquivos de transcrição e o arquivo `_progress.json` para cada job. Acessível por ambos os serviços.
+*   **Volume Nomeado:**
+    *   `whisper_models`: Persiste os modelos Whisper baixados, evitando downloads repetidos entre reinicializações dos containers.
+*   **Rede Docker:** Os serviços operam em uma rede Docker customizada, permitindo comunicação interna se necessário no futuro (embora a comunicação atual seja via API Docker do host).
+
+## ✨ Recursos Principais
+
+*   **Interface Web Moderna e Intuitiva:** Para upload, seleção de modelo, acompanhamento e download.
+*   **Barra de Progresso da Transcrição:** Feedback visual do andamento do processo em etapas.
+*   **Orquestração com Docker Compose:** Gerenciamento simplificado e robusto dos serviços.
+*   **Processamento em Background:** A UI permanece responsiva enquanto as transcrições ocorrem.
+*   **Alta Qualidade de Transcrição:** Utiliza os modelos avançados do Whisper da OpenAI.
+*   **Suporte a Aceleração por GPU NVIDIA:** Para transcrições significativamente mais rápidas.
+*   **Ambiente Isolado e Consistente:** Graças à conteinerização Docker.
+*   **Fácil Instalação e Execução:** Com Docker e Docker Compose.
 
 ## 📋 Pré-requisitos
 
-Para utilizar este projeto, você precisará dos seguintes componentes instalados e configurados no seu sistema Windows:
+1.  **Docker Engine:** Essencial para executar os containers.
+    *   Windows/macOS: Recomendado instalar via **Docker Desktop**.
+    *   Linux: Instalação direta do Docker Engine.
+2.  **Docker Compose:** Para orquestrar os serviços.
+    *   **Docker Compose v2 (comando `docker compose`) é preferível.** O script auxiliar tenta detectar a versão correta.
+    *   Geralmente incluído no Docker Desktop. No Linux, pode precisar de instalação separada do plugin.
+3.  **Para Suporte a GPU (Altamente Recomendado para Performance):**
+    *   Placa de vídeo NVIDIA compatível.
+    *   Drivers NVIDIA atualizados no sistema operacional host.
+    *   **NVIDIA Container Toolkit** (ou `nvidia-docker2` legado) instalado e configurado no host. Isso permite que os containers Docker acessem a GPU.
+        *   *Windows com WSL2:* O Docker Desktop geralmente facilita essa integração.
+        *   *Linux Nativo:* Siga as [instruções oficiais da NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
 
-### 1. Windows com WSL2 e Ubuntu
-
-Este projeto foi testado e otimizado para ser executado em um ambiente Ubuntu dentro do WSL2 (Windows Subsystem for Linux 2).
-* O script **`Instalador_Whisper.ps1`** pode **auxiliar na instalação e configuração inicial** do WSL2 e de uma distribuição Ubuntu (preferencialmente 'Ubuntu') caso você ainda não as tenha ou elas não estejam na versão 2.
-* **Verificação:** Certifique-se de que o recurso 'Plataforma de Máquina Virtual' esteja habilitado no Windows. O instalador tentará habilitá-lo, mas um reinício pode ser necessário.
-* [Guia de Instalação do WSL2 e Ubuntu](https://docs.microsoft.com/pt-br/windows/wsl/install)
-
-### 2. Docker Engine (instalado via `setup.sh` ou Docker Desktop)
-
-Para rodar contêineres Docker, você precisa de uma instalação do Docker Engine. Existem duas abordagens principais para Windows + WSL2:
-
-* **Opção Recomendada para a maioria dos usuários Windows (com suporte simplificado a GPU):** Instale o **Docker Desktop para Windows**.
-    * Ele fornece o **servidor (daemon) Docker principal** que é executado no Windows e gerencia a virtualização, as imagens e os contêineres.
-    * **Crucialmente, o Docker Desktop facilita a integração com o WSL2 e o acesso às GPUs NVIDIA** do seu hardware Windows para uso dentro dos contêineres Docker no WSL.
-    * O `setup.sh` do projeto verificará se este serviço está disponível.
-    * [Guia de Instalação do Docker Desktop](https://docs.docker.com/desktop/install/windows-install/)
-
-* **Opção para usuários avançados (Docker Engine nativo no WSL):** É possível instalar o Docker Engine (servidor e cliente) **diretamente dentro do seu ambiente Ubuntu no WSL2** sem o Docker Desktop.
-    * Neste cenário, os comandos `docker` que você executa no WSL se comunicarão com o daemon Docker rodando inteiramente dentro do ambiente WSL.
-    * **Atenção:** Se você optar por essa configuração sem o Docker Desktop, a configuração do acesso à GPU NVIDIA pode exigir passos manuais adicionais além dos fornecidos pelo `setup.sh`, pois o Docker Desktop geralmente simplifica essa etapa para o WSL2. O `setup.sh` espera uma configuração onde a GPU já é acessível pelo Docker.
-
-**Verificação Geral:** Independentemente da sua escolha (Docker Desktop ou Docker Engine nativo no WSL), o `Instalador_Whisper.ps1` (e consequentemente o `setup.sh`) verificará se o serviço do Docker está acessível e funcionando no seu terminal WSL2. O script abortará se o Docker não for detectado.
-
-### 3. Drivers NVIDIA (Opcional, para GPU)
-
-Se você possui uma placa de vídeo NVIDIA e deseja utilizar a aceleração por GPU, certifique-se de que os drivers NVIDIA mais recentes estejam instalados no seu Windows.
-* O `setup.sh` fará a configuração necessária no ambiente WSL para o Docker acessar sua GPU, mas isso depende dos drivers estarem corretos no Windows e da sua configuração do Docker (Docker Desktop ou Engine nativo no WSL) estar apta a repassar a GPU.
-
-## 🚀 Como Começar
-
-Para começar a transcrever seus vídeos, siga os passos abaixo:
+## 🚀 Guia de Início Rápido
 
 ### Estrutura do Projeto
+```
+transcribe/
+├── docker-compose.yml          # Define os serviços webapp e whisper_worker
+├── transcriber_web_app/
+│   ├── Dockerfile.flask        # Define a imagem do serviço webapp
+│   ├── Dockerfile.whisper      # Define a imagem do serviço whisper_worker
+│   ├── app.py                  # Backend Flask da aplicação web
+│   ├── requirements.txt        # Dependências Python para o webapp
+│   ├── run_local_mvp.sh        # Script auxiliar para iniciar a aplicação
+│   ├── static/                 # Arquivos CSS, JS e imagens para o frontend
+│   ├── transcribe.py           # Script Python que executa o Whisper
+│   ├── videos/                 # (Criada pelo script) Armazena vídeos enviados
+│   └── results/                # (Criada pelo script) Armazena resultados das transcrições
+│
+├── README.md                   # Este guia
+└── ... (outros arquivos de configuração e licença)
+```
 
-Para começar, você pode baixar este repositório. Embora o `Instalador_Whisper.ps1` possa cloná-lo para você, ter uma cópia local pode ser útil.
-1.  **Baixe ou Clone o Repositório:**
-    * **Opção Recomendada (deixe o instalador clonar):** Baixe o arquivo `Instalador_Whisper.ps1` diretamente e coloque-o em um diretório temporário, por exemplo, `C:\temp`.
-    * **Opção Manual (se preferir clonar antes):**
+### Configuração do Ambiente Host (Opcional)
+Para usuários Windows que necessitam configurar o WSL2 e o ambiente Docker/NVIDIA, os scripts `Instalador_Whisper.ps1` e `setup.sh` (localizados na raiz do projeto, de versões anteriores) podem servir como referência ou ponto de partida. Contudo, para a atual arquitetura Docker Compose, o essencial é ter Docker e Docker Compose funcionais no seu sistema host.
+
+### Executando a Aplicação
+
+1.  **Clone o Repositório:**
+    ```bash
+    git clone https://github.com/malvesro/transcribe.git
+    cd transcribe
+    ```
+
+2.  **Inicie os Serviços:**
+    *   **Método Recomendado (usando o script auxiliar):**
+        O script `run_local_mvp.sh` (localizado em `transcriber_web_app/`) simplifica a inicialização. Ele navega para o diretório raiz do projeto, cria as pastas de volume necessárias e executa `docker compose up`.
         ```bash
-        git clone [https://github.com/malvesro/transcribe.git](https://github.com/malvesro/transcribe.git)
-        cd transcribe
+        bash transcriber_web_app/run_local_mvp.sh
         ```
-        Neste caso, o `Instalador_Whisper.ps1` detectará o repositório existente.
-2.  **Verifique a Estrutura:**
-    Após o download/clonagem (ou após a execução bem-sucedida do instalador, que criará a estrutura no WSL), a estrutura do seu diretório *no WSL* deve ser semelhante a esta:
-    ```
-    transcribe/
-    ├── Dockerfile              # Para construir a imagem Docker
-    ├── transcribe.py           # Script Python principal de transcrição
-    ├── setup.sh                # Script de setup automatizado (executado pelo Instalador_Whisper.ps1)
-    ├── Instalador_Whisper.ps1  # << NOVO: Script de instalação para Windows PowerShell
-    ├── README.md               # Este arquivo
-    ├── setup_whisper.log       # Arquivo de log gerado pelo setup.sh (será criado após a execução)
-    └── videos/                 # PASTA DOS SEUS VÍDEOS (será criada pelo setup.sh)
-        └── seu_video.mp4       # Exemplo: coloque seus arquivos de vídeo aqui
-    ```
+    *   **Método Manual (diretamente com Docker Compose):**
+        Execute os seguintes comandos a partir do diretório raiz do projeto (`transcribe/`):
+        a. Crie as pastas para os volumes (se ainda não existirem):
+           ```bash
+           mkdir -p ./transcriber_web_app/videos
+           mkdir -p ./transcriber_web_app/results
+           ```
+        b. Suba os serviços (o comando `--build` reconstrói as imagens se necessário, `-d` executa em background):
+           ```bash
+           # Para Docker Compose v2 (recomendado)
+           docker compose up --build -d
 
-### Executando o Setup Inicial
+           # Ou para Docker Compose v1 (legado, com hífen)
+           # docker-compose up --build -d
+           ```
+    A primeira execução pode levar alguns minutos para construir as imagens Docker.
 
-Para usuários Windows, o processo mais recomendado é utilizar o `Instalador_Whisper.ps1`, que automatiza todas as etapas, desde a configuração do WSL/Ubuntu até a execução do `setup.sh` dentro do WSL.
-Obs.: Para usuários mais avançados que já tem um Ubuntu instalado no WSL, podem executar diretamente o setup.sh após clonar esse repositório.
+3.  **Acesse a Interface Web:**
+    Abra seu navegador e acesse: [http://localhost:5000](http://localhost:5000)
 
-**Passo 1: Execute o Instalador via PowerShell (como Administrador)**
-
-1.  Abra o **PowerShell como Administrador** (clique com o botão direito no ícone do PowerShell e selecione 'Executar como administrador').
-2.  Navegue até o diretório onde você baixou ou clonou o arquivo `Instalador_Whisper.ps1`. Por exemplo:
-    ```powershell
-    cd C:\temp
-    ```
-3.  Execute o script:
-    ```powershell
-    .\Instalador_Whisper.ps1
-    ```
-
-O script `Instalador_Whisper.ps1` irá:
-* Verificar e ajustar a política de execução do PowerShell.
-* Verificar privilégios de administrador.
-* **Instalar ou configurar o WSL2 e a distribuição Ubuntu** (preferencialmente 'Ubuntu'), garantindo que esteja na versão 2. Ele guiará você pela criação de usuário e senha no Ubuntu, se necessário.
-* **Clonar o repositório `transcribe`** para o diretório `~/transcribe` dentro do seu Ubuntu no WSL.
-* **Executar o script `setup.sh`** (que está dentro do repositório clonado) *no ambiente Ubuntu do WSL*.
-
-As ações do `setup.sh` (executadas automaticamente pelo `Instalador_Whisper.ps1`) incluem:
-* **Verificar se o Docker está em execução e acessível.** Se não estiver, o script abortará com instruções.
-* Instalar os pré-requisitos do sistema para o ambiente NVIDIA (curl, lsb-release).
-* Configurar o repositório do NVIDIA Container Toolkit e sua chave GPG.
-* Atualizar o índice de pacotes APT e instalar o pacote `nvidia-utils-55x` (detectando a versão mais apropriada) e o `nvidia-container-toolkit`.
-* Configurar o Docker Daemon para usar o NVIDIA Runtime para acesso à GPU (se o Docker Engine estiver rodando no WSL, ou configurar para que o Docker Desktop passe a GPU).
-* Reiniciar o serviço Docker no WSL2.
-* Verificar a funcionalidade do `nvidia-smi` (ferramenta NVIDIA para monitorar a GPU).
-* Criar a pasta `videos/` se ela não existir.
-* Construir a imagem Docker (`whisper-transcriber`) com o modelo `small` pré-carregado (se a imagem ainda não existir).
-* Definir dois aliases de terminal (`transcribe` e `transcribegpu`) de forma **permanente** no seu arquivo de configuração de shell (`.bashrc` ou `.zshrc`) e para a sessão atual.
-* Gerar um arquivo de log detalhado (`setup_whisper.log`) com todas as ações.
-* Exibir um guia de uso rápido no final com instruções importantes sobre a reinicialização do WSL2.
-
-> ⚠️ **Importante:** Após o `Instalador_Whisper.ps1` finalizar, é **altamente recomendado reiniciar sua instância WSL2 completamente** (fechando o terminal e executando `wsl --shutdown` no PowerShell) para garantir que todas as configurações do Docker e GPU sejam aplicadas corretamente.
-
-## 🎬 Uso da Ferramenta
-
-Após o setup inicial ser concluído com sucesso:
-
-1.  **Coloque seus arquivos de vídeo** (MP4, AVI, MKV, etc.) ou áudio (MP3, WAV, etc.) na pasta `videos/` dentro do diretório `transcribe` no seu ambiente WSL. Exemplo: `~/transcribe/videos/meu_video.mp4`.
-2.  **Abra um novo terminal do Ubuntu no WSL.**
-3.  Você pode usar os aliases (`transcribe` ou `transcribegpu`) diretamente, ou chamar o script `transcribe.py` via `docker run`.
-
-### Exemplos de Transcrição
-
-Os aliases fornecem uma maneira simplificada de executar a transcrição.
-
-* **Usando CPU (mais compatível):**
+4.  **Visualizando Logs (útil para depuração):**
     ```bash
-    transcribe --video meu_video_aula.mp4
+    docker compose logs -f               # Logs de todos os serviços em tempo real
+    docker compose logs -f webapp        # Logs apenas do serviço webapp
+    docker compose logs -f whisper_worker # Logs apenas do serviço whisper_worker
     ```
-    Este comando transcreverá o áudio de `meu_video_aula.mp4` usando o modelo `small` do Whisper (que já está pré-carregado) e salvará a transcrição em `meu_video_aula.txt` na pasta `videos/`.
 
-* **Usando GPU (se disponível, para maior velocidade):**
+5.  **Parando a Aplicação:**
+    No diretório raiz do projeto (`transcribe/`):
     ```bash
-    transcribegpu --video podcast.mp4 --model medium
+    docker compose down
     ```
-    Este comando tentará usar sua GPU NVIDIA para transcrever `podcast.mp4` com o modelo `medium`. O modelo `medium` será baixado na primeira vez que for usado (e armazenado em cache para usos futuros).
+    Este comando para e remove os containers. Os volumes de dados no host (como `videos/`, `results/`) e o volume nomeado (`whisper_models`) são preservados.
 
-* **Comandos Completos (alternativa aos aliases):**
-    Se os aliases não estiverem funcionando ou para entender o que está acontecendo:
-    * **CPU:**
-        ```bash
-        docker run --rm -v "$(pwd)/videos:/data" whisper-transcriber python3 /app/transcribe.py --video seu_video.mp4
-        ```
-    * **GPU:**
-        ```bash
-        docker run --rm --gpus all -v "$(pwd)/videos:/data" whisper-transcriber python3 /app/transcribe.py --video seu_video.mp4 --model medium
-        ```
+## 💻 Utilizando a Interface Web
 
-### Detalhes sobre os Modelos Whisper
+1.  **Página Inicial:** Apresenta o formulário para upload.
+2.  **Selecionar Arquivo:** Clique em "Escolher arquivo" e selecione o arquivo de mídia desejado. O nome do arquivo aparecerá abaixo do campo.
+3.  **Escolher Modelo:** Selecione o modelo Whisper na lista suspensa (ex: `small`, `medium`, `large`). Modelos maiores oferecem maior precisão, mas exigem mais tempo e recursos computacionais (especialmente VRAM da GPU).
+4.  **Transcrever:** Clique no botão "Transcrever Áudio/Vídeo". O upload do arquivo iniciará, e uma barra de progresso mostrará o status do envio.
+5.  **Acompanhar Status:** Após o upload, um novo "job" de transcrição aparecerá na seção "Status das Transcrições".
+    *   O status inicial será "Iniciado".
+    *   Uma **barra de progresso da transcrição** e um texto de status indicarão o andamento do processo em etapas (ex: "Modelo carregado", "Processando com IA...", "Salvando arquivos...").
+    *   Um spinner visual também indicará atividade.
+6.  **Resultados:** Quando a transcrição for concluída, o status mudará para "Concluído", a barra de progresso atingirá 100%, e links para download dos arquivos de transcrição (`.txt`, `.srt`, `.vtt`) aparecerão.
 
-O script `transcribe.py` utiliza os modelos do Whisper. O modelo `small` é o padrão e já vem pré-carregado na imagem Docker para economizar tempo. Você pode especificar outros modelos maiores para maior precisão, mas eles exigirão mais recursos (especialmente GPU e VRAM) e serão baixados na primeira vez que forem usados.
+## ⚙️ Detalhes Técnicos dos Componentes
 
-* **`small`:** Leve e rápido, bom para a maioria dos casos.
-* **`medium`:** Mais preciso, mas mais lento e exige mais recursos.
-* **`large` / `large-v2` / `large-v3`:** O mais preciso, mas o mais lento e exige muitos recursos de GPU (VRAM).
-* Para ver todos os modelos disponíveis e opções do script, use:
+### `docker-compose.yml`
+Este arquivo é o coração da orquestração. Ele define:
+*   **Serviços:** `webapp` e `whisper_worker`.
+*   **Builds:** Especifica o contexto e o Dockerfile para cada serviço.
+*   **Volumes:**
+    *   Mapeia `./transcriber_web_app/videos` e `./transcriber_web_app/results` do host para dentro dos containers, permitindo o compartilhamento de arquivos.
+    *   Cria um volume nomeado `whisper_models` para persistir os modelos do Whisper baixados em `/root/.cache/whisper` dentro do `whisper_worker`.
+    *   Monta o socket Docker (`/var/run/docker.sock`) no `webapp` para permitir que ele use a API Docker.
+*   **Portas:** Expõe a porta `5000` do `webapp` para o host.
+*   **Variáveis de Ambiente:** Injeta `DOCKER_COMPOSE_PROJECT_NAME` no `webapp` para ajudar na identificação de containers.
+*   **Rede:** Define uma rede customizada `transcriber_network` para os serviços.
+*   **Recursos de GPU:** Inclui configuração para permitir que o `whisper_worker` utilize GPUs NVIDIA.
+
+### Serviço `webapp` (Flask)
+
+#### `transcriber_web_app/Dockerfile.flask`
+*   Baseado na imagem oficial `python:3.10-slim`.
+*   Instala dependências de sistema (como `curl` para baixar o GPG do Docker) e o cliente Docker CLI (`docker-ce-cli`).
+*   Copia `requirements.txt` e instala as dependências Python (Flask, Docker SDK, etc.).
+*   Copia o restante do código da aplicação (`app.py`, `static/`).
+*   Define o `WORKDIR` como `/app`, expõe a porta `5000` e define o `CMD` para iniciar o Flask.
+
+#### `transcriber_web_app/app.py`
+*   Aplicação Flask que serve o frontend e gerencia a lógica de backend.
+*   Usa a biblioteca Python `docker` para se comunicar com o Docker daemon do host (via socket montado).
+*   Ao receber um upload, salva o arquivo e inicia uma **nova thread** para executar o comando de transcrição no container `whisper_worker` usando `container.exec_run()`. Isso torna a chamada não bloqueante para a UI.
+*   A thread loga a saída (stdout/stderr) do processo worker.
+*   O endpoint `/status/<job_id>` lê o arquivo `_progress.json` (criado pelo `transcribe.py`) e os arquivos de resultado final para fornecer o status e o progresso da transcrição.
+
+#### `transcriber_web_app/static/`
+Contém os arquivos estáticos do frontend:
+*   `index.html`: A estrutura principal da página.
+*   `style.css`: Folha de estilos com a aparência moderna da interface.
+*   `script.js`: Lógica JavaScript para uploads com XHR (e barra de progresso de upload), polling de status, atualização dinâmica da UI (incluindo a barra de progresso da transcrição e badges de status), e manipulação de eventos.
+
+### Serviço `whisper_worker`
+
+#### `transcriber_web_app/Dockerfile.whisper`
+*   Baseado na imagem `nvidia/cuda` para suporte a GPU.
+*   Instala `ffmpeg` (essencial para processamento de mídia), Python, e as bibliotecas PyTorch e Whisper.
+*   Pré-carrega o modelo `small` do Whisper durante o build da imagem para acelerar o primeiro uso.
+*   Copia o script `transcribe.py` para `/app/` no container.
+*   Define `CMD ["tail", "-f", "/dev/null"]` para manter o container em execução, aguardando comandos via `exec_run`.
+
+#### `transcriber_web_app/transcribe.py`
+*   Script Python executado dentro do `whisper_worker`.
+*   Utiliza `argparse` para receber argumentos: `--video` (caminho do arquivo de mídia), `--model` (nome do modelo Whisper) e `--output_dir` (diretório para salvar os resultados).
+*   Implementa a função `update_progress(output_dir, percentage, status_text)` que cria/atualiza um arquivo `_progress.json` no `output_dir` com o status atual e a porcentagem de progresso em várias etapas do processo (Iniciando, Carregando Modelo, Processando, Salvando, Concluído/Erro).
+*   Realiza a transcrição usando a biblioteca Whisper.
+*   Salva os resultados (`.txt`, `.srt`, `.vtt`) no `output_dir` especificado.
+*   Retorna código de saída `0` em sucesso e `1` em caso de erros.
+
+### Script Auxiliar `run_local_mvp.sh`
+Localizado em `transcriber_web_app/run_local_mvp.sh`, este script Bash simplifica o processo de inicialização:
+*   Verifica a disponibilidade do Docker e do Docker Compose (v1 ou v2).
+*   Cria as pastas `./transcriber_web_app/videos` e `./transcriber_web_app/results` no host se não existirem.
+*   Executa `docker compose up --build -d` a partir do diretório raiz do projeto.
+*   Fornece instruções úteis para o usuário sobre como acessar a aplicação, visualizar logs e parar os serviços.
+
+## 🔐 Considerações de Segurança
+
+*   **Socket Docker Montado:** O serviço `webapp` tem o socket Docker (`/var/run/docker.sock`) montado. Isso concede ao container `webapp` privilégios significativos sobre o Docker daemon do host. Embora necessário para a arquitetura atual (onde o `webapp` aciona o `whisper_worker` via API Docker), em um ambiente de produção, essa abordagem deve ser cuidadosamente avaliada e, se possível, substituída por alternativas como uma fila de mensagens (ex: Celery com RabbitMQ/Redis) para desacoplar os serviços e reduzir a superfície de ataque. Para o contexto deste MVP local, é uma solução funcional.
+*   **`FutureWarning` do `torch.load`:** Nos logs do `whisper_worker` (visíveis através do `webapp`), você notará um `FutureWarning` sobre `torch.load(..., weights_only=False)`. Isso se refere a uma prática de segurança do PyTorch ao carregar arquivos de modelo. Como estamos usando os modelos oficiais da OpenAI, o risco é considerado baixo. A correção ideal para este aviso ocorreria dentro da própria biblioteca `openai-whisper`. Não são necessárias ações no projeto atualmente, mas é bom estar ciente.
+
+## 🗣️ Uso via Linha de Comando (Avançado)
+
+Para usuários avançados ou para fins de script, é possível executar o `transcribe.py` diretamente no `whisper_worker` usando `docker compose exec`:
+1.  Garanta que os serviços estejam ativos: `docker compose up -d`.
+2.  Coloque o arquivo de mídia em `./transcriber_web_app/videos/` no host.
+3.  Crie um diretório de resultado no host, ex: `mkdir -p ./transcriber_web_app/results/meu_job_cli_01`.
+4.  Execute:
     ```bash
-    transcribe --help
+    docker compose exec -T whisper_worker python3 /app/transcribe.py \
+        --video /data/videos/nome_do_seu_video.mp4 \
+        --model small \
+        --output_dir /data/results/meu_job_cli_01
     ```
-    ou
-    ```bash
-    docker run --rm -v "$(pwd)/videos:/data" whisper-transcriber python3 /app/transcribe.py --help
-    ```
-
-## ⚙️ Detalhes Técnicos
-
-### `setup.sh`
-
-Este é o script principal de setup do projeto, escrito em Bash. Ele é executado pelo `Instalador_Whisper.ps1` no ambiente Linux (Ubuntu no WSL) e realiza as seguintes ações de forma automatizada:
-
-* Instalação de pré-requisitos do sistema (curl, lsb-release, etc.).
-* Instalação e configuração do **Docker Engine** (a parte servidor do Docker) no ambiente WSL, que se integrará com o **Docker Desktop** no Windows (se presente) ou operará nativamente.
-* Configuração do repositório NVIDIA Container Toolkit.
-* Instalação de pacotes NVIDIA (`nvidia-utils-55x`, `nvidia-container-toolkit`).
-* Configuração do Docker Daemon para usar o NVIDIA Runtime para acesso à GPU.
-* Construção condicional da imagem Docker `whisper-transcriber`, incluindo o pré-carregamento do modelo `small` do Whisper.
-* Criação da pasta `videos/` para os arquivos de mídia do usuário.
-* Criação e persistência dos aliases `transcribe` e `transcribegpu` no shell do usuário.
-* **Melhores Práticas:** Inclui tratamento de erros (`set -euxo pipefail`, `trap`), logging detalhado para arquivo (`setup_whisper.log`) e mensagens coloridas no terminal para uma melhor experiência do usuário.
-* **Idempotência:** Verifica a existência da imagem Docker e da pasta `videos/` antes de tentar criá-las, tornando-o seguro para execuções repetidas.
-* **Execução Segura:** Utiliza `cd "$(dirname "$0")"` para garantir que todos os comandos internos sejam executados a partir do diretório correto do script.
-
-### `Instalador_Whisper.ps1`
-
-Este é um script Windows PowerShell projetado para automatizar e simplificar o processo de instalação e configuração do ambiente `Whisper Transcriber` para usuários no Windows, integrando-se perfeitamente com o WSL2. Ele atua como um orquestrador que prepara o ambiente para a execução do `setup.sh`.
-
-* **Verificação de Ambiente Windows:** Garante que o PowerShell tenha a política de execução adequada e que o script seja executado com privilégios de administrador.
-* **Gerenciamento do WSL2 e Ubuntu:**
-    * Verifica a instalação do WSL2 e de uma distribuição Ubuntu (preferencialmente 'Ubuntu').
-    * Instala o Ubuntu se não for encontrado e guia o usuário na criação do usuário/senha inicial.
-    * Garante que a distribuição Ubuntu esteja configurada para usar a versão 2 do WSL.
-    * Verifica a prontidão da comunicação com o ambiente Ubuntu.
-* **Clonagem do Repositório:** Clona automaticamente o repositório `https://github.com/malvesro/transcribe.git` para o diretório `~/transcribe` dentro do seu ambiente Ubuntu no WSL.
-* **Execução Delegada:** Após preparar o ambiente Windows/WSL e clonar o repositório, ele chama o script `setup.sh` (localizado dentro do repositório clonado) para realizar as configurações específicas do Docker e NVIDIA dentro do Linux (Ubuntu no WSL).
-* **Robustez:** Inclui tratamento de erros e mensagens claras para guiar o usuário em cada etapa.
+    Os resultados serão salvos em `./transcriber_web_app/results/meu_job_cli_01/` no host.
 
 ---
 
 🤝 Contribuição
 ---------------
-
-Contribuições são muito bem-vindas! Se você tiver ideias para melhorias, encontrar bugs ou quiser adicionar novas funcionalidades, sinta-se à vontade para:
-
-1.  Fazer um "fork" do projeto.
-
-2.  Criar uma nova "branch" (`git checkout -b feature/sua-feature`).
-
-3.  Implementar suas mudanças.
-
-4.  Fazer um "commit" com mensagens claras (`git commit -m 'feat: Adiciona nova funcionalidade X'`).
-
-5.  Enviar suas mudanças (`git push origin feature/sua-feature`).
-
-6.  Abrir um "Pull Request" (PR) no repositório principal.
+Suas contribuições são bem-vindas! Por favor, siga o processo padrão: fork, crie uma branch para sua feature/correção, faça commit das suas mudanças com mensagens claras e abra um Pull Request.
 
 ---
 
 📄 Licença
 ----------
-
-Este projeto está licenciado sob a Licença MIT. Para mais detalhes, consulte o arquivo `LICENSE` no repositório.
+Este projeto está licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
 
 ---
 
 ✉️ Contato
 ----------
-
-Para dúvidas, sugestões ou suporte, você pode abrir uma "Issue" neste repositório GitHub: [https://github.com/malvesro/transcribe/issues](https://github.com/malvesro/transcribe/issues)
+Para dúvidas, sugestões ou problemas, por favor, abra uma "Issue" no repositório GitHub: [https://github.com/malvesro/transcribe/issues](https://github.com/malvesro/transcribe/issues)

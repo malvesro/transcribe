@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Whisper Transcriber MVP</title>
+    <!-- Importa a fonte Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Link para o CSS atualizado -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Transcrição Inteligente de Mídia</h1>
+
+        <form id="uploadForm" enctype="multipart/form-data">
+            <div class="form-group">
+                <label for="videoFile">Selecione o arquivo de mídia:</label>
+                <!-- Para um input de arquivo mais estilizado, poderíamos usar a técnica de label + JS,
+                     mas vamos manter o input padrão por enquanto e aplicar o estilo base. -->
+                <input type="file" id="videoFile" name="videoFile" accept=".mp4,.m4a,.mp3,.wav,.mov,.avi,.flac,.ogg,.aac" required>
+                <div id="fileNameDisplay" class="file-name-display">Nenhum arquivo selecionado</div>
+            </div>
+
+            <div class="form-group">
+                <label for="modelSize">Escolha o modelo Whisper:</label>
+                <select id="modelSize" name="modelSize">
+                    <option value="tiny">Tiny</option>
+                    <option value="base">Base</option>
+                    <option value="small" selected>Small</option>
+                    <option value="medium">Medium</option>
+                    <option value="large">Large</option>
+                    <option value="large-v2">Large-v2</option>
+                    <option value="large-v3">Large-v3</option>
+                </select>
+            </div>
+
+            <button type="submit" id="submitButton">
+                <!-- Adicionar um ícone de upload aqui seria bom no futuro -->
+                Transcrever Áudio/Vídeo
+            </button>
+        </form>
+
+        <div id="uploadProgressContainer" style="display: none;"> <!-- Renomeado para clareza -->
+            <p id="uploadProgressText">Enviando arquivo: <span id="uploadPercentage">0%</span></p> <!-- Texto dentro do <p> -->
+            <div class="progress-bar-background">
+                <div id="progressBar" class="progress-bar-foreground"></div>
+            </div>
+        </div>
+
+        <div id="transcriptionJobsSection"> <!-- Renomeado para clareza -->
+            <h2>Status das Transcrições</h2>
+            <ul id="jobsList">
+                <!-- Os status dos jobs serão adicionados aqui pelo JavaScript
+                     Exemplo de como um item da lista será estruturado pelo JS:
+                <li id="job-XYZ">
+                    <div class="job-info">
+                        <span><strong>Arquivo:</strong> nome_do_arquivo.mp4</span>
+                        <span><strong>Modelo:</strong> small</span>
+                        <span><strong>Job ID:</strong> XYZ</span>
+                        <span class="status-text-container">
+                            <strong>Status:</strong>
+                            <span class="status-badge status-processing">Processando</span>
+                            <span class="spinner" style="display: none;"></span>
+                        </span>
+                <!-- Container para a barra de progresso da transcrição -->
+                <div class="transcription-progress-container" style="display: none; margin-top: 0.5rem;">
+                    <span class="progress-status-text" style="font-size: 0.8em; color: var(--color-text-secondary);"></span>
+                    <div class="progress-bar-background" style="height: 8px;">
+                        <div class="transcription-progress-bar" style="width: 0%; height: 100%; background-color: var(--color-primary); border-radius: var(--border-radius-sm); transition: width 0.2s ease-in-out;"></div>
+                    </div>
+                </div>
+                    </div>
+                    <div class="result-links" style="display: none;">
+                        <strong>Downloads:</strong>
+                        <a href="#" class="download-link">TXT</a>
+                        <a href="#" class="download-link">SRT</a>
+                        <a href="#" class="download-link">VTT</a>
+                    </div>
+                </li>
+                -->
+            </ul>
+        </div>
+    </div>
+
+    <script src="/static/script.js"></script>
+</body>
+</html>
