@@ -75,6 +75,140 @@ A aplicação é orquestrada pelo `docker-compose.yml` e consiste em:
     *   `whisper_models`: Persiste os modelos Whisper baixados, evitando downloads repetidos entre reinicializações dos containers.
 *   **Rede Docker:** Os serviços operam em uma rede Docker customizada, permitindo comunicação interna se necessário no futuro (embora a comunicação atual seja via API Docker do host).
 
+---
+### 🗺️ Diagramas de Arquitetura
+
+#### Visão Geral da arquitetura
+```mermaid
+    flowchart LR
+        subgraph Usuário
+            U[Usuário Web]
+        end
+    
+        subgraph WebApp [Flask]
+            F[FrontendHTML-CSS-JS]
+            B[BackendFlask Python]
+        end
+    
+        subgraph Docker Host
+            D[Docker Daemon/var/run/docker.sock]
+        end
+    
+        subgraph Whisper Worker
+            W[Script transcribe.pyWhisper + PyTorch + CUDA]
+        end
+    
+        subgraph Volumes Compartilhados
+            V1[(videos/)]
+            V2[(results/)]
+            VM[(whisper_models)]
+        end
+    
+        U -- HTTP --> F
+        F -- AJAX/REST --> B
+        B -- API Docker --> D
+        D -- docker exec/run --> W
+        B -- Monta arquivos --> V1
+        W -- Lê/Escreve --> V1
+        W -- Lê/Escreve --> V2
+        W -- Lê/Escreve --> VM
+        B -- Lê --> V2
+```  
+
+---
+#### C4 Model - Diagrama de Contexto
+```mermaid
+C4Context
+    title Sistema de Transcrição Whisper
+
+    Person(user, "Usuário", "Pessoa que utiliza a interface web para transcrever arquivos de mídia")
+    
+    System_Boundary(transcribe, "Whisper Transcriber") {
+        System(webapp, "WebApp (Flask)", "Interface web para upload, acompanhamento e download das transcrições")
+        System(whisper_worker, "Whisper Worker", "Processa os arquivos de mídia usando o modelo Whisper")
+    }
+    
+    System_Ext(docker, "Docker Engine", "Orquestração dos containers")
+    
+    Rel(user, webapp, "Usa via navegador")
+    Rel(webapp, docker, "Dispara comandos via API Docker")
+    Rel(docker, whisper_worker, "Executa comandos no worker")
+    Rel(whisper_worker, webapp, "Atualiza progresso e resultados")
+```
+---
+#### C4 Model - Diagrama de Container
+```mermaid
+
+C4Container
+    title Diagrama de Containers - Whisper Transcriber
+
+    Person(user, "Usuário", "Pessoa que utiliza a interface web")
+    
+    System_Boundary(transcribe, "Whisper Transcriber") {
+        Container(webapp, "WebApp (Flask)", "Python/Flask", "Interface web, gerenciamento de jobs, comunicação com Docker")
+        Container(whisper_worker, "Whisper Worker", "Python", "Executa transcrições com Whisper, PyTorch, CUDA")
+        ContainerDb(vol_videos, "Volume de Vídeos", "Docker Volume", "Armazena arquivos de mídia enviados")
+        ContainerDb(vol_results, "Volume de Resultados", "Docker Volume", "Armazena transcrições e progresso")
+        ContainerDb(vol_models, "Volume de Modelos", "Docker Volume", "Armazena modelos Whisper baixados")
+    }
+    
+    Rel(user, webapp, "HTTP")
+    Rel(webapp, whisper_worker, "Dispara execução via Docker API")
+    BiRel(webapp, vol_videos, "Lê/Escreve arquivos")
+    BiRel(webapp, vol_results, "Lê/Escreve status/resultados")
+    BiRel(whisper_worker, vol_videos, "Lê arquivos de mídia")
+    BiRel(whisper_worker, vol_results, "Escreve resultados e progresso")
+    BiRel(whisper_worker, vol_models, "Lê/Escreve modelos")
+```
+---
+#### C4 Model - Diagrama de Componentes
+```mermaid
+C4Component
+    title Diagrama de Componentes - WebApp Flask
+
+    Person(user, "Usuário", "Pessoa que utiliza a interface web")
+    
+    Container_Boundary(webapp, "WebApp (Flask)") {
+        Component(frontend, "Frontend", "HTML/CSS/JS", "Interface do usuário")
+        Component(api, "API Flask", "Python/Flask", "Recebe uploads, gerencia jobs, expõe status")
+        Component(docker_sdk, "Docker SDK", "Python", "Comunica-se com o Docker para acionar o worker")
+    }
+    
+    Rel(user, frontend, "Usa via navegador")
+    Rel(frontend, api, "AJAX/REST")
+    Rel(api, docker_sdk, "Aciona worker via Docker")
+```
+---
+### 🔄 Fluxo do Processo de Transcrição
+
+```mermaid
+    sequenceDiagram
+    
+        participant U as Usuário
+    
+        participant F as Frontend (Web)
+    
+        participant B as Backend (Flask)
+    
+        participant W as Whisper Worker
+    
+    
+    
+        U->>F: Upload de arquivo + seleção de modelo
+    
+        F->>B: Envia arquivo e modelo
+    
+        B->>W: Dispara transcrição via Docker API
+    
+        W->>B: Atualiza progresso (_progress.json)
+    
+        B->>F: Atualiza barra de progresso
+    
+        F->>U: Mostra status e permite download dos resultados
+``` 
+
+---
+
 ## ✨ Recursos Principais
 
 *   **Interface Web Moderna e Intuitiva:** Para upload, seleção de modelo, acompanhamento e download.
