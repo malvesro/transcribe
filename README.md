@@ -212,12 +212,14 @@ C4Component
 ## ✨ Recursos Principais
 
 *   **Interface Web Moderna e Intuitiva:** Para upload, seleção de modelo, acompanhamento e download.
+*   **Limite de Arquivo Configurável:** Suporte a arquivos grandes (padrão: 15GB, configurável até 100GB+).
 *   **Barra de Progresso da Transcrição:** Feedback visual do andamento do processo em etapas.
 *   **Orquestração com Docker Compose:** Gerenciamento simplificado e robusto dos serviços.
 *   **Processamento em Background:** A UI permanece responsiva enquanto as transcrições ocorrem.
 *   **Alta Qualidade de Transcrição:** Utiliza os modelos avançados do Whisper da OpenAI.
 *   **Suporte a Aceleração por GPU NVIDIA:** Para transcrições significativamente mais rápidas.
 *   **Ambiente Isolado e Consistente:** Graças à conteinerização Docker.
+*   **Configuração Flexível:** Parâmetros ajustáveis via variáveis de ambiente.
 *   **Fácil Instalação e Execução:** Com Docker e Docker Compose.
 
 ## 📋 Pré-requisitos
@@ -259,6 +261,43 @@ transcribe/
 ### Configuração do Ambiente Host (Opcional)
 Para usuários Windows que necessitam configurar o WSL2 e o ambiente Docker/NVIDIA, os scripts `Instalador_Whisper.ps1` e `setup.sh` (localizados na raiz do projeto, de versões anteriores) podem servir como referência ou ponto de partida. Contudo, para a atual arquitetura Docker Compose, o essencial é ter Docker e Docker Compose funcionais no seu sistema host.
 
+### Configuração do Limite de Arquivo
+
+O sistema permite configurar o limite máximo de tamanho de arquivo (padrão: **15GB**):
+
+1.  **Configuração via Variável de Ambiente:**
+    ```bash
+    # Para 25GB
+    export MAX_FILE_SIZE_GB=25
+    
+    # Para 5GB (arquivos menores)
+    export MAX_FILE_SIZE_GB=5
+    
+    # Para 50GB (arquivos grandes)
+    export MAX_FILE_SIZE_GB=50
+    ```
+
+2.  **Configuração via Arquivo .env:**
+    ```bash
+    # Copie o arquivo de exemplo
+    cp .env.example .env
+    
+    # Edite o arquivo .env e ajuste:
+    MAX_FILE_SIZE_GB=25
+    ```
+
+3.  **Usando o Script de Configuração:**
+    ```bash
+    # Ver configurações atuais
+    python transcriber_web_app/manage_config.py show
+    
+    # Definir novo limite (ex: 25GB)
+    python transcriber_web_app/manage_config.py set-size --size 25
+    
+    # Estimar espaço em disco necessário
+    python transcriber_web_app/manage_config.py estimate-disk --size 25 --jobs 10
+    ```
+
 ### Executando a Aplicação
 
 1.  **Clone o Repositório:**
@@ -267,7 +306,13 @@ Para usuários Windows que necessitam configurar o WSL2 e o ambiente Docker/NVID
     cd transcribe
     ```
 
-2.  **Inicie os Serviços:**
+2.  **Configure o Limite de Arquivo (Opcional):**
+    ```bash
+    # Para arquivos de até 25GB
+    echo "MAX_FILE_SIZE_GB=25" >> .env
+    ```
+
+3.  **Inicie os Serviços:**
     *   **Método Recomendado (usando o script auxiliar):**
         O script `run_local_mvp.sh` (localizado em `transcriber_web_app/`) simplifica a inicialização. Ele navega para o diretório raiz do projeto, cria as pastas de volume necessárias e executa `docker compose up`.
         ```bash
@@ -384,6 +429,60 @@ Localizado em `transcriber_web_app/run_local_mvp.sh`, este script Bash simplific
 
 *   **Socket Docker Montado:** O serviço `webapp` tem o socket Docker (`/var/run/docker.sock`) montado. Isso concede ao container `webapp` privilégios significativos sobre o Docker daemon do host. Embora necessário para a arquitetura atual (onde o `webapp` aciona o `whisper_worker` via API Docker), em um ambiente de produção, essa abordagem deve ser cuidadosamente avaliada e, se possível, substituída por alternativas como uma fila de mensagens (ex: Celery com RabbitMQ/Redis) para desacoplar os serviços e reduzir a superfície de ataque. Para o contexto deste MVP local, é uma solução funcional.
 *   **`FutureWarning` do `torch.load`:** Nos logs do `whisper_worker` (visíveis através do `webapp`), você notará um `FutureWarning` sobre `torch.load(..., weights_only=False)`. Isso se refere a uma prática de segurança do PyTorch ao carregar arquivos de modelo. Como estamos usando os modelos oficiais da OpenAI, o risco é considerado baixo. A correção ideal para este aviso ocorreria dentro da própria biblioteca `openai-whisper`. Não são necessárias ações no projeto atualmente, mas é bom estar ciente.
+
+## ⚙️ Configurações Avançadas
+
+### Variáveis de Ambiente Disponíveis
+
+| Variável | Padrão | Descrição |
+|----------|--------|-----------|
+| `MAX_FILE_SIZE_GB` | `15` | Limite máximo de tamanho de arquivo em GB |
+| `TRANSCRIPTION_TIMEOUT` | `3600` | Timeout para transcrições em segundos |
+| `STATUS_POLL_INTERVAL` | `5000` | Intervalo de polling para status em ms |
+| `FLASK_ENV` | `development` | Ambiente da aplicação (development/production) |
+| `SECRET_KEY` | `auto-generated` | Chave secreta do Flask |
+| `COMPOSE_PROJECT_NAME` | `transcribe` | Nome do projeto Docker Compose |
+
+### Exemplos de Configuração
+
+**Para arquivos muito grandes (50GB):**
+```bash
+# .env
+MAX_FILE_SIZE_GB=50
+TRANSCRIPTION_TIMEOUT=7200  # 2 horas
+```
+
+**Para uso corporativo (100GB):**
+```bash
+# .env
+MAX_FILE_SIZE_GB=100
+TRANSCRIPTION_TIMEOUT=14400  # 4 horas
+STATUS_POLL_INTERVAL=10000   # 10 segundos
+```
+
+**Para desenvolvimento com arquivos pequenos:**
+```bash
+# .env
+MAX_FILE_SIZE_GB=2
+TRANSCRIPTION_TIMEOUT=1800   # 30 minutos
+STATUS_POLL_INTERVAL=2000    # 2 segundos
+```
+
+### Estimativa de Recursos
+
+Use o script de configuração para estimar recursos necessários:
+
+```bash
+# Estimar espaço para arquivos de 25GB com 10 jobs simultâneos
+python transcriber_web_app/manage_config.py estimate-disk --size 25 --jobs 10
+
+# Resultado exemplo:
+# 📁 Arquivos originais (10 jobs): 250.0GB
+# 📄 Resultados de transcrição: 0.010GB
+# 🧠 Cache de modelos Whisper: 5GB
+# 🛡️  Margem de segurança (20%): 51.0GB
+# 💽 Total recomendado: 306.0GB
+```
 
 ## 🗣️ Uso via Linha de Comando (Avançado)
 

@@ -18,10 +18,9 @@
         <form id="uploadForm" enctype="multipart/form-data">
             <div class="form-group">
                 <label for="videoFile">Selecione o arquivo de mídia:</label>
-                <!-- Para um input de arquivo mais estilizado, poderíamos usar a técnica de label + JS,
-                     mas vamos manter o input padrão por enquanto e aplicar o estilo base. -->
                 <input type="file" id="videoFile" name="videoFile" accept=".mp4,.m4a,.mp3,.wav,.mov,.avi,.flac,.ogg,.aac" required>
                 <div id="fileNameDisplay" class="file-name-display">Nenhum arquivo selecionado</div>
+                <div id="fileSizeInfo" class="file-size-info">Limite máximo: 15GB</div>
             </div>
 
             <div class="form-group">
@@ -43,8 +42,8 @@
             </button>
         </form>
 
-        <div id="uploadProgressContainer" style="display: none;"> <!-- Renomeado para clareza -->
-            <p id="uploadProgressText">Enviando arquivo: <span id="uploadPercentage">0%</span></p> <!-- Texto dentro do <p> -->
+        <div id="uploadProgressContainer" style="display: none;">
+            <p id="uploadProgressText">Enviando arquivo: <span id="uploadPercentage">0%</span></p>
             <div class="progress-bar-background">
                 <div id="progressBar" class="progress-bar-foreground"></div>
             </div>
