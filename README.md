@@ -224,18 +224,33 @@ C4Component
 
 ## 📋 Pré-requisitos
 
-1.  **Docker Engine:** Essencial para executar os containers.
-    *   Windows/macOS: Recomendado instalar via **Docker Desktop**.
-    *   Linux: Instalação direta do Docker Engine.
-2.  **Docker Compose:** Para orquestrar os serviços.
-    *   **Docker Compose v2 (comando `docker compose`) é preferível.** O script auxiliar tenta detectar a versão correta.
-    *   Geralmente incluído no Docker Desktop. No Linux, pode precisar de instalação separada do plugin.
-3.  **Para Suporte a GPU (Altamente Recomendado para Performance):**
-    *   Placa de vídeo NVIDIA compatível.
-    *   Drivers NVIDIA atualizados no sistema operacional host.
-    *   **NVIDIA Container Toolkit** (ou `nvidia-docker2` legado) instalado e configurado no host. Isso permite que os containers Docker acessem a GPU.
-        *   *Windows com WSL2:* O Docker Desktop geralmente facilita essa integração.
-        *   *Linux Nativo:* Siga as [instruções oficiais da NVIDIA](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html).
+> 🎉 **NOVIDADE:** Não precisa instalar NADA manualmente! Nossos instaladores fazem tudo automaticamente.
+
+### 🚀 Para Instalação Automática (Recomendado):
+
+#### Windows:
+- **Windows 10** versão 2004+ ou **Windows 11**
+- **Privilégios de Administrador** (apenas para executar o instalador)
+
+#### Linux/macOS:
+- **Sistema operacional suportado:** Ubuntu, Debian, CentOS, RHEL, Fedora, macOS
+- **Acesso sudo** (apenas durante a instalação)
+
+### 🛠️ Para Instalação Manual (Desenvolvedores):
+
+1.  **Docker Engine:** Instalado automaticamente pelos nossos scripts, ou:
+    *   **Linux:** `sudo apt install docker.io docker-compose` (Ubuntu/Debian)
+    *   **macOS:** `brew install --cask docker` (com Homebrew)
+    *   **Windows:** WSL2 + Ubuntu (recomendado) ou Docker Desktop
+
+2.  **Docker Compose:** Instalado automaticamente junto com Docker
+
+3.  **Para Suporte a GPU (Opcional - Acelera Transcrições):**
+    *   Placa de vídeo NVIDIA compatível
+    *   Drivers NVIDIA atualizados
+    *   **NVIDIA Container Toolkit** (instalado automaticamente no Linux)
+
+> 💡 **Dica:** Use nossos instaladores automáticos - eles configuram tudo perfeitamente!
 
 ## 🚀 Guia de Início Rápido
 
@@ -298,7 +313,48 @@ O sistema permite configurar o limite máximo de tamanho de arquivo (padrão: **
     python transcriber_web_app/manage_config.py estimate-disk --size 25 --jobs 10
     ```
 
-### Executando a Aplicação
+### 🚀 Instalação Super Simples (Para Usuários Leigos)
+
+> 💡 **Recomendado para 95% dos usuários** - Instalação TOTALMENTE automática!
+
+#### 🪟 **Windows (Super Fácil):**
+1. **Execute como Administrador:** `instalador-facil.bat` *(duplo clique)*
+2. **Aguarde a mágica acontecer** *(5-10 minutos)*
+3. **Pronto!** ✨ Acesse http://localhost:5000
+
+> 🔧 **O que é instalado automaticamente:**
+> - WSL2 (Subsistema Linux)
+> - Ubuntu (sistema leve)
+> - Docker (dentro do Ubuntu)
+> - Whisper Transcriber
+
+#### 🐧 **Linux/macOS (Super Fácil):**
+1. **Execute:** `bash setup.sh`
+2. **Aguarde a instalação automática** *(5-10 minutos)*
+3. **Pronto!** ✨ Acesse http://localhost:5000
+
+> 🔧 **O que é instalado automaticamente:**
+> - Docker (motor nativo)
+> - Docker Compose
+> - Whisper Transcriber
+
+> 🎯 **Resultado:** Interface web funcionando sem instalar NADA manualmente!
+
+---
+
+### 🛠️ Instalação Avançada (Para Desenvolvedores)
+
+**Para usuários que querem mais controle:**
+
+#### Windows Avançado:
+- **PowerShell:** `setup-windows.ps1`
+- **Manual:** Siga as instruções abaixo
+
+#### Todas as Plataformas:
+- **Script auxiliar:** `bash transcriber_web_app/run_local_mvp.sh`
+- **Docker Compose direto:** `docker compose up --build -d`
+
+### 🛠️ Instalação Manual (Para Desenvolvedores)
 
 1.  **Clone o Repositório:**
     ```bash
