@@ -1,6 +1,21 @@
 #!/usr/bin/env python3
 """
-Testes unitários para a aplicação Whisper Transcriber
+Testes unitários completos para a aplicação Whisper Transcriber
+
+Este arquivo contém testes que podem requerer Docker para funcionalidade completa.
+Para testes que funcionam sem Docker, veja test_local.py
+
+Categorias de teste:
+- TestFileValidation: Validação de arquivos e extensões
+- TestRoutes: Testes de rotas e endpoints da API
+- TestUpload: Upload de arquivos e integração com Docker
+- TestSecurity: Testes de segurança e validação
+- TestConfiguration: Testes de configuração da aplicação
+
+Execução:
+    python test_app.py
+    python -m pytest test_app.py -v
+    python ../run_tests.py --full
 """
 import unittest
 import tempfile

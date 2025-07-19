@@ -11,564 +11,183 @@
   <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="MIT License">
 </p>
 
-## 📄 Sumário
-
-* [Visão Geral](#-visão-geral)
-* [Arquitetura da Solução](#-arquitetura-da-solução)
-* [Recursos Principais](#-recursos-principais)
-* [Pré-requisitos](#-pré-requisitos)
-* [Guia de Início Rápido](#-guia-de-início-rápido)
-  * [Estrutura do Projeto](#estrutura-do-projeto)
-  * [Configuração do Ambiente Host (Opcional)](#configuração-do-ambiente-host-opcional)
-  * [Executando a Aplicação](#executando-a-aplicação)
-* [Utilizando a Interface Web](#-utilizando-a-interface-web)
-* [Detalhes Técnicos dos Componentes](#-detalhes-técnicos-dos-componentes)
-  * [`docker-compose.yml`](#docker-composeyml)
-  * [Serviço `webapp` (Flask)](#serviço-webapp-flask)
-    *   [`transcriber_web_app/Dockerfile.flask`](#transcriber_web_appdockerfileflask)
-    *   [`transcriber_web_app/app.py`](#transcriber_web_appapppy)
-    *   [`transcriber_web_app/static/`](#transcriber_web_appstatic)
-  * [Serviço `whisper_worker`](#serviço-whisper_worker)
-    *   [`transcriber_web_app/Dockerfile.whisper`](#transcriber_web_appdockerfilewhisper)
-    *   [`transcriber_web_app/transcribe.py`](#transcriber_web_apptranscribepy)
-  * [Script Auxiliar `run_local_mvp.sh`](#script-auxiliar-run_local_mvpsh)
-* [Considerações de Segurança](#-considerações-de-segurança)
-* [Uso via Linha de Comando (Avançado)](#-uso-via-linha-de-comando-avançado)
-* [Contribuição](#-contribuição)
-* [Licença](#-licença)
-* [Contato](#-contato)
-
----
-
 ## 💡 Visão Geral
 
-Este projeto fornece uma solução robusta e amigável para **transcrição de áudio e vídeo utilizando o modelo Whisper da OpenAI**. A arquitetura foi modernizada para usar **Docker Compose**, orquestrando dois serviços principais: uma **interface web intuitiva (Flask)** e um **worker Whisper dedicado** para processamento eficiente.
-
-A interface web permite que usuários façam upload de arquivos de mídia, selecionem o modelo Whisper, acompanhem o progresso da transcrição em tempo real (com uma barra de progresso por etapas) e baixem os resultados nos formatos TXT, SRT e VTT.
-
-O uso do Docker Compose garante isolamento, consistência entre ambientes e facilita a manutenção e futuras evoluções do projeto.
-
-## 🏗️ Arquitetura da Solução
-
-A aplicação é orquestrada pelo `docker-compose.yml` e consiste em:
-
-1.  **Serviço `webapp`:**
-    *   **Interface Web (Frontend):** Construída com HTML, CSS e JavaScript puro, servida pelo Flask.
-    *   **Servidor de Aplicação (Backend):** Uma aplicação Flask (Python) que gerencia:
-        *   Uploads de arquivos de mídia.
-        *   Criação e gerenciamento de jobs de transcrição.
-        *   Comunicação com o serviço `whisper_worker` através da API Docker (via socket Docker montado) para iniciar as transcrições. A execução do worker é disparada em uma thread separada para não bloquear a interface.
-        *   Fornecimento de status de jobs (incluindo progresso por etapas) e download dos arquivos de resultado.
-    *   **Dockerfile:** `transcriber_web_app/Dockerfile.flask`.
-
-2.  **Serviço `whisper_worker`:**
-    *   **Ambiente de Transcrição:** Contém o modelo Whisper da OpenAI, PyTorch, CUDA (para aceleração por GPU, se disponível), `ffmpeg` e outras dependências necessárias.
-    *   **Processamento:** Executa o script `transcriber_web_app/transcribe.py` para realizar a transcrição.
-    *   **Relato de Progresso:** O script `transcribe.py` foi modificado para registrar o progresso em etapas em um arquivo `_progress.json` dentro da pasta de resultados do job.
-    *   **Dockerfile:** `transcriber_web_app/Dockerfile.whisper`. O container é mantido em execução (com `CMD ["tail", "-f", "/dev/null"]`) para aguardar comandos.
-
-**Comunicação e Dados:**
-*   **Volumes Compartilhados:**
-    *   `./transcriber_web_app/videos/`: Armazena os arquivos de mídia enviados. Acessível por ambos os serviços.
-    *   `./transcriber_web_app/results/`: Armazena os arquivos de transcrição e o arquivo `_progress.json` para cada job. Acessível por ambos os serviços.
-*   **Volume Nomeado:**
-    *   `whisper_models`: Persiste os modelos Whisper baixados, evitando downloads repetidos entre reinicializações dos containers.
-*   **Rede Docker:** Os serviços operam em uma rede Docker customizada, permitindo comunicação interna se necessário no futuro (embora a comunicação atual seja via API Docker do host).
-
----
-### 🗺️ Diagramas de Arquitetura
-
-#### Visão Geral da arquitetura
-```mermaid
-    flowchart LR
-        subgraph Usuário
-            U[Usuário Web]
-        end
-    
-        subgraph WebApp [Flask]
-            F[FrontendHTML-CSS-JS]
-            B[BackendFlask Python]
-        end
-    
-        subgraph Docker Host
-            D[Docker Daemon/var/run/docker.sock]
-        end
-    
-        subgraph Whisper Worker
-            W[Script transcribe.pyWhisper + PyTorch + CUDA]
-        end
-    
-        subgraph Volumes Compartilhados
-            V1[(videos/)]
-            V2[(results/)]
-            VM[(whisper_models)]
-        end
-    
-        U -- HTTP --> F
-        F -- AJAX/REST --> B
-        B -- API Docker --> D
-        D -- docker exec/run --> W
-        B -- Monta arquivos --> V1
-        W -- Lê/Escreve --> V1
-        W -- Lê/Escreve --> V2
-        W -- Lê/Escreve --> VM
-        B -- Lê --> V2
-```  
-
----
-#### C4 Model - Diagrama de Contexto
-```mermaid
-C4Context
-    title Sistema de Transcrição Whisper
-
-    Person(user, "Usuário", "Pessoa que utiliza a interface web para transcrever arquivos de mídia")
-    
-    System_Boundary(transcribe, "Whisper Transcriber") {
-        System(webapp, "WebApp (Flask)", "Interface web para upload, acompanhamento e download das transcrições")
-        System(whisper_worker, "Whisper Worker", "Processa os arquivos de mídia usando o modelo Whisper")
-    }
-    
-    System_Ext(docker, "Docker Engine", "Orquestração dos containers")
-    
-    Rel(user, webapp, "Usa via navegador")
-    Rel(webapp, docker, "Dispara comandos via API Docker")
-    Rel(docker, whisper_worker, "Executa comandos no worker")
-    Rel(whisper_worker, webapp, "Atualiza progresso e resultados")
-```
----
-#### C4 Model - Diagrama de Container
-```mermaid
-
-C4Container
-    title Diagrama de Containers - Whisper Transcriber
-
-    Person(user, "Usuário", "Pessoa que utiliza a interface web")
-    
-    System_Boundary(transcribe, "Whisper Transcriber") {
-        Container(webapp, "WebApp (Flask)", "Python/Flask", "Interface web, gerenciamento de jobs, comunicação com Docker")
-        Container(whisper_worker, "Whisper Worker", "Python", "Executa transcrições com Whisper, PyTorch, CUDA")
-        ContainerDb(vol_videos, "Volume de Vídeos", "Docker Volume", "Armazena arquivos de mídia enviados")
-        ContainerDb(vol_results, "Volume de Resultados", "Docker Volume", "Armazena transcrições e progresso")
-        ContainerDb(vol_models, "Volume de Modelos", "Docker Volume", "Armazena modelos Whisper baixados")
-    }
-    
-    Rel(user, webapp, "HTTP")
-    Rel(webapp, whisper_worker, "Dispara execução via Docker API")
-    BiRel(webapp, vol_videos, "Lê/Escreve arquivos")
-    BiRel(webapp, vol_results, "Lê/Escreve status/resultados")
-    BiRel(whisper_worker, vol_videos, "Lê arquivos de mídia")
-    BiRel(whisper_worker, vol_results, "Escreve resultados e progresso")
-    BiRel(whisper_worker, vol_models, "Lê/Escreve modelos")
-```
----
-#### C4 Model - Diagrama de Componentes
-```mermaid
-C4Component
-    title Diagrama de Componentes - WebApp Flask
-
-    Person(user, "Usuário", "Pessoa que utiliza a interface web")
-    
-    Container_Boundary(webapp, "WebApp (Flask)") {
-        Component(frontend, "Frontend", "HTML/CSS/JS", "Interface do usuário")
-        Component(api, "API Flask", "Python/Flask", "Recebe uploads, gerencia jobs, expõe status")
-        Component(docker_sdk, "Docker SDK", "Python", "Comunica-se com o Docker para acionar o worker")
-    }
-    
-    Rel(user, frontend, "Usa via navegador")
-    Rel(frontend, api, "AJAX/REST")
-    Rel(api, docker_sdk, "Aciona worker via Docker")
-```
----
-### 🔄 Fluxo do Processo de Transcrição
-
-```mermaid
-    sequenceDiagram
-    
-        participant U as Usuário
-    
-        participant F as Frontend (Web)
-    
-        participant B as Backend (Flask)
-    
-        participant W as Whisper Worker
-    
-    
-    
-        U->>F: Upload de arquivo + seleção de modelo
-    
-        F->>B: Envia arquivo e modelo
-    
-        B->>W: Dispara transcrição via Docker API
-    
-        W->>B: Atualiza progresso (_progress.json)
-    
-        B->>F: Atualiza barra de progresso
-    
-        F->>U: Mostra status e permite download dos resultados
-``` 
-
----
-
-## ✨ Recursos Principais
-
-*   **Interface Web Moderna e Intuitiva:** Para upload, seleção de modelo, acompanhamento e download.
-*   **Limite de Arquivo Configurável:** Suporte a arquivos grandes (padrão: 15GB, configurável até 100GB+).
-*   **Barra de Progresso da Transcrição:** Feedback visual do andamento do processo em etapas.
-*   **Orquestração com Docker Compose:** Gerenciamento simplificado e robusto dos serviços.
-*   **Processamento em Background:** A UI permanece responsiva enquanto as transcrições ocorrem.
-*   **Alta Qualidade de Transcrição:** Utiliza os modelos avançados do Whisper da OpenAI.
-*   **Suporte a Aceleração por GPU NVIDIA:** Para transcrições significativamente mais rápidas.
-*   **Ambiente Isolado e Consistente:** Graças à conteinerização Docker.
-*   **Configuração Flexível:** Parâmetros ajustáveis via variáveis de ambiente.
-*   **Fácil Instalação e Execução:** Com Docker e Docker Compose.
-
-## 📋 Pré-requisitos
-
-> 🎉 **NOVIDADE:** Não precisa instalar NADA manualmente! Nossos instaladores fazem tudo automaticamente.
-
-### 🚀 Para Instalação Automática (Recomendado):
-
-#### Windows:
-- **Windows 10** versão 2004+ ou **Windows 11**
-- **Privilégios de Administrador** (apenas para executar o instalador)
-
-#### Linux/macOS:
-- **Sistema operacional suportado:** Ubuntu, Debian, CentOS, RHEL, Fedora, macOS
-- **Acesso sudo** (apenas durante a instalação)
-
-### 🛠️ Para Instalação Manual (Desenvolvedores):
-
-1.  **Docker Engine:** Instalado automaticamente pelos nossos scripts, ou:
-    *   **Linux:** `sudo apt install docker.io docker-compose` (Ubuntu/Debian)
-    *   **macOS:** `brew install --cask docker` (com Homebrew)
-    *   **Windows:** WSL2 + Ubuntu (recomendado) ou Docker Desktop
-
-2.  **Docker Compose:** Instalado automaticamente junto com Docker
-
-3.  **Para Suporte a GPU (Opcional - Acelera Transcrições):**
-    *   Placa de vídeo NVIDIA compatível
-    *   Drivers NVIDIA atualizados
-    *   **NVIDIA Container Toolkit** (instalado automaticamente no Linux)
-
-> 💡 **Dica:** Use nossos instaladores automáticos - eles configuram tudo perfeitamente!
-
-## 🚀 Guia de Início Rápido
-
-### Estrutura do Projeto
-```
-transcribe/
-├── docker-compose.yml          # Define os serviços webapp e whisper_worker
-├── transcriber_web_app/
-│   ├── Dockerfile.flask        # Define a imagem do serviço webapp
-│   ├── Dockerfile.whisper      # Define a imagem do serviço whisper_worker
-│   ├── app.py                  # Backend Flask da aplicação web
-│   ├── requirements.txt        # Dependências Python para o webapp
-│   ├── run_local_mvp.sh        # Script auxiliar para iniciar a aplicação
-│   ├── static/                 # Arquivos CSS, JS e imagens para o frontend
-│   ├── transcribe.py           # Script Python que executa o Whisper
-│   ├── videos/                 # (Criada pelo script) Armazena vídeos enviados
-│   └── results/                # (Criada pelo script) Armazena resultados das transcrições
-│
-├── README.md                   # Este guia
-└── ... (outros arquivos de configuração e licença)
-```
-
-### Configuração do Ambiente Host (Opcional)
-Para usuários Windows que necessitam configurar o WSL2 e o ambiente Docker/NVIDIA, os scripts `Instalador_Whisper.ps1` e `setup.sh` (localizados na raiz do projeto, de versões anteriores) podem servir como referência ou ponto de partida. Contudo, para a atual arquitetura Docker Compose, o essencial é ter Docker e Docker Compose funcionais no seu sistema host.
-
-### Configuração do Limite de Arquivo
-
-O sistema permite configurar o limite máximo de tamanho de arquivo (padrão: **15GB**):
-
-1.  **Configuração via Variável de Ambiente:**
-    ```bash
-    # Para 25GB
-    export MAX_FILE_SIZE_GB=25
-    
-    # Para 5GB (arquivos menores)
-    export MAX_FILE_SIZE_GB=5
-    
-    # Para 50GB (arquivos grandes)
-    export MAX_FILE_SIZE_GB=50
-    ```
-
-2.  **Configuração via Arquivo .env:**
-    ```bash
-    # Copie o arquivo de exemplo
-    cp .env.example .env
-    
-    # Edite o arquivo .env e ajuste:
-    MAX_FILE_SIZE_GB=25
-    ```
-
-3.  **Usando o Script de Configuração:**
-    ```bash
-    # Ver configurações atuais
-    python transcriber_web_app/manage_config.py show
-    
-    # Definir novo limite (ex: 25GB)
-    python transcriber_web_app/manage_config.py set-size --size 25
-    
-    # Estimar espaço em disco necessário
-    python transcriber_web_app/manage_config.py estimate-disk --size 25 --jobs 10
-    ```
-
-### 🚀 Instalação Super Simples (Para Usuários Leigos)
-
-> 💡 **Recomendado para 95% dos usuários** - Instalação TOTALMENTE automática!
-
-#### 🪟 **Windows (Super Fácil):**
-1. **Execute como Administrador:** `instalador-facil.bat` *(duplo clique)*
-2. **Aguarde a mágica acontecer** *(5-10 minutos)*
-3. **Pronto!** ✨ Acesse http://localhost:5000
-
-> 🔧 **O que é instalado automaticamente:**
-> - WSL2 (Subsistema Linux)
-> - Ubuntu (sistema leve)
-> - Docker (dentro do Ubuntu)
-> - Whisper Transcriber
-
-#### 🐧 **Linux/macOS (Super Fácil):**
-1. **Execute:** `bash setup.sh`
-2. **Aguarde a instalação automática** *(5-10 minutos)*
-3. **Pronto!** ✨ Acesse http://localhost:5000
-
-> 🔧 **O que é instalado automaticamente:**
-> - Docker (motor nativo)
-> - Docker Compose
-> - Whisper Transcriber
-
-> 🎯 **Resultado:** Interface web funcionando sem instalar NADA manualmente!
-
----
-
-### 🛠️ Instalação Avançada (Para Desenvolvedores)
-
-**Para usuários que querem mais controle:**
-
-#### Windows Avançado:
-- **PowerShell:** `setup-windows.ps1`
-- **Manual:** Siga as instruções abaixo
-
-#### Todas as Plataformas:
-- **Script auxiliar:** `bash transcriber_web_app/run_local_mvp.sh`
-- **Docker Compose direto:** `docker compose up --build -d`
-
-### 🛠️ Instalação Manual (Para Desenvolvedores)
-
-1.  **Clone o Repositório:**
-    ```bash
-    git clone https://github.com/malvesro/transcribe.git
-    cd transcribe
-    ```
-
-2.  **Configure o Limite de Arquivo (Opcional):**
-    ```bash
-    # Para arquivos de até 25GB
-    echo "MAX_FILE_SIZE_GB=25" >> .env
-    ```
-
-3.  **Inicie os Serviços:**
-    *   **Método Recomendado (usando o script auxiliar):**
-        O script `run_local_mvp.sh` (localizado em `transcriber_web_app/`) simplifica a inicialização. Ele navega para o diretório raiz do projeto, cria as pastas de volume necessárias e executa `docker compose up`.
-        ```bash
-        bash transcriber_web_app/run_local_mvp.sh
-        ```
-    *   **Método Manual (diretamente com Docker Compose):**
-        Execute os seguintes comandos a partir do diretório raiz do projeto (`transcribe/`):
-        a. Crie as pastas para os volumes (se ainda não existirem):
-           ```bash
-           mkdir -p ./transcriber_web_app/videos
-           mkdir -p ./transcriber_web_app/results
-           ```
-        b. Suba os serviços (o comando `--build` reconstrói as imagens se necessário, `-d` executa em background):
-           ```bash
-           # Para Docker Compose v2 (recomendado)
-           docker compose up --build -d
-
-           # Ou para Docker Compose v1 (legado, com hífen)
-           # docker-compose up --build -d
-           ```
-    A primeira execução pode levar alguns minutos para construir as imagens Docker.
-
-3.  **Acesse a Interface Web:**
-    Abra seu navegador e acesse: [http://localhost:5000](http://localhost:5000)
-
-4.  **Visualizando Logs (útil para depuração):**
-    ```bash
-    docker compose logs -f               # Logs de todos os serviços em tempo real
-    docker compose logs -f webapp        # Logs apenas do serviço webapp
-    docker compose logs -f whisper_worker # Logs apenas do serviço whisper_worker
-    ```
-
-5.  **Parando a Aplicação:**
-    No diretório raiz do projeto (`transcribe/`):
-    ```bash
-    docker compose down
-    ```
-    Este comando para e remove os containers. Os volumes de dados no host (como `videos/`, `results/`) e o volume nomeado (`whisper_models`) são preservados.
-
-## 💻 Utilizando a Interface Web
-
-1.  **Página Inicial:** Apresenta o formulário para upload.
-2.  **Selecionar Arquivo:** Clique em "Escolher arquivo" e selecione o arquivo de mídia desejado. O nome do arquivo aparecerá abaixo do campo.
-3.  **Escolher Modelo:** Selecione o modelo Whisper na lista suspensa (ex: `small`, `medium`, `large`). Modelos maiores oferecem maior precisão, mas exigem mais tempo e recursos computacionais (especialmente VRAM da GPU).
-4.  **Transcrever:** Clique no botão "Transcrever Áudio/Vídeo". O upload do arquivo iniciará, e uma barra de progresso mostrará o status do envio.
-5.  **Acompanhar Status:** Após o upload, um novo "job" de transcrição aparecerá na seção "Status das Transcrições".
-    *   O status inicial será "Iniciado".
-    *   Uma **barra de progresso da transcrição** e um texto de status indicarão o andamento do processo em etapas (ex: "Modelo carregado", "Processando com IA...", "Salvando arquivos...").
-    *   Um spinner visual também indicará atividade.
-6.  **Resultados:** Quando a transcrição for concluída, o status mudará para "Concluído", a barra de progresso atingirá 100%, e links para download dos arquivos de transcrição (`.txt`, `.srt`, `.vtt`) aparecerão.
-
-## ⚙️ Detalhes Técnicos dos Componentes
-
-### `docker-compose.yml`
-Este arquivo é o coração da orquestração. Ele define:
-*   **Serviços:** `webapp` e `whisper_worker`.
-*   **Builds:** Especifica o contexto e o Dockerfile para cada serviço.
-*   **Volumes:**
-    *   Mapeia `./transcriber_web_app/videos` e `./transcriber_web_app/results` do host para dentro dos containers, permitindo o compartilhamento de arquivos.
-    *   Cria um volume nomeado `whisper_models` para persistir os modelos do Whisper baixados em `/root/.cache/whisper` dentro do `whisper_worker`.
-    *   Monta o socket Docker (`/var/run/docker.sock`) no `webapp` para permitir que ele use a API Docker.
-*   **Portas:** Expõe a porta `5000` do `webapp` para o host.
-*   **Variáveis de Ambiente:** Injeta `DOCKER_COMPOSE_PROJECT_NAME` no `webapp` para ajudar na identificação de containers.
-*   **Rede:** Define uma rede customizada `transcriber_network` para os serviços.
-*   **Recursos de GPU:** Inclui configuração para permitir que o `whisper_worker` utilize GPUs NVIDIA.
-
-### Serviço `webapp` (Flask)
-
-#### `transcriber_web_app/Dockerfile.flask`
-*   Baseado na imagem oficial `python:3.10-slim`.
-*   Instala dependências de sistema (como `curl` para baixar o GPG do Docker) e o cliente Docker CLI (`docker-ce-cli`).
-*   Copia `requirements.txt` e instala as dependências Python (Flask, Docker SDK, etc.).
-*   Copia o restante do código da aplicação (`app.py`, `static/`).
-*   Define o `WORKDIR` como `/app`, expõe a porta `5000` e define o `CMD` para iniciar o Flask.
-
-#### `transcriber_web_app/app.py`
-*   Aplicação Flask que serve o frontend e gerencia a lógica de backend.
-*   Usa a biblioteca Python `docker` para se comunicar com o Docker daemon do host (via socket montado).
-*   Ao receber um upload, salva o arquivo e inicia uma **nova thread** para executar o comando de transcrição no container `whisper_worker` usando `container.exec_run()`. Isso torna a chamada não bloqueante para a UI.
-*   A thread loga a saída (stdout/stderr) do processo worker.
-*   O endpoint `/status/<job_id>` lê o arquivo `_progress.json` (criado pelo `transcribe.py`) e os arquivos de resultado final para fornecer o status e o progresso da transcrição.
-
-#### `transcriber_web_app/static/`
-Contém os arquivos estáticos do frontend:
-*   `index.html`: A estrutura principal da página.
-*   `style.css`: Folha de estilos com a aparência moderna da interface.
-*   `script.js`: Lógica JavaScript para uploads com XHR (e barra de progresso de upload), polling de status, atualização dinâmica da UI (incluindo a barra de progresso da transcrição e badges de status), e manipulação de eventos.
-
-### Serviço `whisper_worker`
-
-#### `transcriber_web_app/Dockerfile.whisper`
-*   Baseado na imagem `nvidia/cuda` para suporte a GPU.
-*   Instala `ffmpeg` (essencial para processamento de mídia), Python, e as bibliotecas PyTorch e Whisper.
-*   Pré-carrega o modelo `small` do Whisper durante o build da imagem para acelerar o primeiro uso.
-*   Copia o script `transcribe.py` para `/app/` no container.
-*   Define `CMD ["tail", "-f", "/dev/null"]` para manter o container em execução, aguardando comandos via `exec_run`.
-
-#### `transcriber_web_app/transcribe.py`
-*   Script Python executado dentro do `whisper_worker`.
-*   Utiliza `argparse` para receber argumentos: `--video` (caminho do arquivo de mídia), `--model` (nome do modelo Whisper) e `--output_dir` (diretório para salvar os resultados).
-*   Implementa a função `update_progress(output_dir, percentage, status_text)` que cria/atualiza um arquivo `_progress.json` no `output_dir` com o status atual e a porcentagem de progresso em várias etapas do processo (Iniciando, Carregando Modelo, Processando, Salvando, Concluído/Erro).
-*   Realiza a transcrição usando a biblioteca Whisper.
-*   Salva os resultados (`.txt`, `.srt`, `.vtt`) no `output_dir` especificado.
-*   Retorna código de saída `0` em sucesso e `1` em caso de erros.
-
-### Script Auxiliar `run_local_mvp.sh`
-Localizado em `transcriber_web_app/run_local_mvp.sh`, este script Bash simplifica o processo de inicialização:
-*   Verifica a disponibilidade do Docker e do Docker Compose (v1 ou v2).
-*   Cria as pastas `./transcriber_web_app/videos` e `./transcriber_web_app/results` no host se não existirem.
-*   Executa `docker compose up --build -d` a partir do diretório raiz do projeto.
-*   Fornece instruções úteis para o usuário sobre como acessar a aplicação, visualizar logs e parar os serviços.
-
-## 🔐 Considerações de Segurança
-
-*   **Socket Docker Montado:** O serviço `webapp` tem o socket Docker (`/var/run/docker.sock`) montado. Isso concede ao container `webapp` privilégios significativos sobre o Docker daemon do host. Embora necessário para a arquitetura atual (onde o `webapp` aciona o `whisper_worker` via API Docker), em um ambiente de produção, essa abordagem deve ser cuidadosamente avaliada e, se possível, substituída por alternativas como uma fila de mensagens (ex: Celery com RabbitMQ/Redis) para desacoplar os serviços e reduzir a superfície de ataque. Para o contexto deste MVP local, é uma solução funcional.
-*   **`FutureWarning` do `torch.load`:** Nos logs do `whisper_worker` (visíveis através do `webapp`), você notará um `FutureWarning` sobre `torch.load(..., weights_only=False)`. Isso se refere a uma prática de segurança do PyTorch ao carregar arquivos de modelo. Como estamos usando os modelos oficiais da OpenAI, o risco é considerado baixo. A correção ideal para este aviso ocorreria dentro da própria biblioteca `openai-whisper`. Não são necessárias ações no projeto atualmente, mas é bom estar ciente.
-
-## ⚙️ Configurações Avançadas
-
-### Variáveis de Ambiente Disponíveis
-
-| Variável | Padrão | Descrição |
-|----------|--------|-----------|
-| `MAX_FILE_SIZE_GB` | `15` | Limite máximo de tamanho de arquivo em GB |
-| `TRANSCRIPTION_TIMEOUT` | `3600` | Timeout para transcrições em segundos |
-| `STATUS_POLL_INTERVAL` | `5000` | Intervalo de polling para status em ms |
-| `FLASK_ENV` | `development` | Ambiente da aplicação (development/production) |
-| `SECRET_KEY` | `auto-generated` | Chave secreta do Flask |
-| `COMPOSE_PROJECT_NAME` | `transcribe` | Nome do projeto Docker Compose |
-
-### Exemplos de Configuração
-
-**Para arquivos muito grandes (50GB):**
+Solução web para **transcrição de áudio e vídeo** usando o modelo **Whisper da OpenAI**. Interface intuitiva com upload de arquivos, seleção de modelos, progresso em tempo real e download de resultados em múltiplos formatos (TXT, SRT, VTT).
+
+**Arquitetura**: Docker Compose orquestrando webapp Flask + worker Whisper dedicado.
+
+## 📚 Documentação
+
+Este projeto possui documentação organizada por perfil de usuário e necessidade específica:
+
+### 👤 **Para Usuários Finais**
+- **[REQUIREMENTS.md](REQUIREMENTS.md)** - **Requisitos completos do sistema**
+  - Compatibilidade de SO, hardware mínimo/recomendado
+  - Estimativas de espaço em disco e performance
+  - Troubleshooting para problemas comuns
+  - *Leia antes de instalar para verificar compatibilidade*
+
+### 🧑‍💻 **Para Desenvolvedores**
+- **[TESTING.md](TESTING.md)** - **Guia completo de testes**
+  - Como executar testes locais e com Docker
+  - Exemplos de como adicionar novos testes
+  - Configuração de ambiente de desenvolvimento
+  - *Essencial para contribuir com o projeto*
+
+- **[.kiro/steering/tech.md](.kiro/steering/tech.md)** - **Arquitetura técnica detalhada**
+  - Diagramas de arquitetura (C4 Model, Mermaid)
+  - Stack tecnológico e dependências
+  - Fluxos de processo e comunicação entre componentes
+  - *Para entender a arquitetura interna do sistema*
+
+### 🔒 **Para Administradores**
+- **[SECURITY.md](transcriber_web_app/SECURITY.md)** - **Diretrizes de segurança**
+  - Configurações de produção
+  - Boas práticas de segurança
+  - Validações e proteções implementadas
+  - *Importante para deployments em produção*
+
+### 🛠️ **Scripts e Ferramentas**
+- **[instalador-facil.bat](instalador-facil.bat)** / **[setup.sh](setup.sh)** - Instalação automática
+- **[run_tests.py](run_tests.py)** - Execução inteligente de testes
+- **[manage_config.py](transcriber_web_app/manage_config.py)** - Gerenciamento de configurações
+- **[example_new_test.py](transcriber_web_app/example_new_test.py)** - Exemplos para desenvolvedores
+
+### 🎯 **Guia de Leitura por Cenário**
+
+| Seu Objetivo | Documentos Recomendados | Ordem de Leitura |
+|--------------|-------------------------|-------------------|
+| **Usar a ferramenta** | REQUIREMENTS.md → README.md | 1. Verificar requisitos<br>2. Instalar e usar |
+| **Desenvolver/Contribuir** | REQUIREMENTS.md → TESTING.md → tech.md | 1. Configurar ambiente<br>2. Executar testes<br>3. Entender arquitetura |
+| **Deploy em produção** | REQUIREMENTS.md → SECURITY.md | 1. Planejar infraestrutura<br>2. Configurar segurança |
+| **Resolver problemas** | REQUIREMENTS.md (Troubleshooting) → TESTING.md | 1. Diagnóstico<br>2. Testes para validar |
+
+## 🚀 Início Rápido
+
+### Instalação Automática (Recomendada)
 ```bash
-# .env
-MAX_FILE_SIZE_GB=50
-TRANSCRIPTION_TIMEOUT=7200  # 2 horas
+# Windows (executar como Administrador)
+instalador-facil.bat
+
+# Linux/macOS
+bash setup.sh
 ```
 
-**Para uso corporativo (100GB):**
+### Instalação Manual
 ```bash
-# .env
-MAX_FILE_SIZE_GB=100
-TRANSCRIPTION_TIMEOUT=14400  # 4 horas
-STATUS_POLL_INTERVAL=10000   # 10 segundos
+# 1. Clonar repositório
+git clone https://github.com/malvesro/transcribe.git
+cd transcribe
+
+# 2. Iniciar serviços
+docker compose up --build -d
+
+# 3. Acessar aplicação
+# http://localhost:5000
 ```
 
-**Para desenvolvimento com arquivos pequenos:**
+## 💻 Como Usar
+
+1. **Acesse**: http://localhost:5000
+2. **Upload**: Selecione arquivo de áudio/vídeo
+3. **Modelo**: Escolha tamanho do modelo Whisper
+4. **Transcrever**: Acompanhe progresso em tempo real
+5. **Download**: Baixe resultados em TXT, SRT ou VTT
+
+## 🏗️ Arquitetura
+
+### Componentes
+- **WebApp (Flask)**: Interface web e API
+- **Whisper Worker**: Processamento IA com GPU/CPU
+- **Docker Compose**: Orquestração de serviços
+
+### Comunicação
+- Volumes compartilhados para arquivos
+- API Docker para controle de workers
+- Progresso em tempo real via JSON
+
+### Diagramas
+```mermaid
+flowchart LR
+    U[Usuário] --> W[WebApp Flask]
+    W --> D[Docker API]
+    D --> WW[Whisper Worker]
+    WW --> V[(Volumes)]
+    W --> V
+```
+
+## ⚙️ Configuração
+
+### Variáveis Principais (.env)
 ```bash
-# .env
-MAX_FILE_SIZE_GB=2
-TRANSCRIPTION_TIMEOUT=1800   # 30 minutos
-STATUS_POLL_INTERVAL=2000    # 2 segundos
+MAX_FILE_SIZE_GB=15          # Limite de arquivo
+FLASK_ENV=development        # Ambiente
+TRANSCRIPTION_TIMEOUT=3600   # Timeout (segundos)
 ```
 
-### Estimativa de Recursos
+### Comandos Úteis
+```bash
+# Ver configurações
+python transcriber_web_app/manage_config.py show
 
-Use o script de configuração para estimar recursos necessários:
+# Alterar limite de arquivo
+python transcriber_web_app/manage_config.py set-size --size 25
+
+# Executar testes
+python run_tests.py
+
+# Ver logs
+docker compose logs -f
+
+# Parar serviços
+docker compose down
+```
+
+## 🧪 Testes
 
 ```bash
-# Estimar espaço para arquivos de 25GB com 10 jobs simultâneos
-python transcriber_web_app/manage_config.py estimate-disk --size 25 --jobs 10
+# Automático (detecta ambiente)
+python run_tests.py
 
-# Resultado exemplo:
-# 📁 Arquivos originais (10 jobs): 250.0GB
-# 📄 Resultados de transcrição: 0.010GB
-# 🧠 Cache de modelos Whisper: 5GB
-# 🛡️  Margem de segurança (20%): 51.0GB
-# 💽 Total recomendado: 306.0GB
+# Apenas locais (sem Docker)
+python run_tests.py --local
+
+# Completos (com Docker)
+python run_tests.py --full
 ```
 
-## 🗣️ Uso via Linha de Comando (Avançado)
+**Documentação completa**: [TESTING.md](TESTING.md)
 
-Para usuários avançados ou para fins de script, é possível executar o `transcribe.py` diretamente no `whisper_worker` usando `docker compose exec`:
-1.  Garanta que os serviços estejam ativos: `docker compose up -d`.
-2.  Coloque o arquivo de mídia em `./transcriber_web_app/videos/` no host.
-3.  Crie um diretório de resultado no host, ex: `mkdir -p ./transcriber_web_app/results/meu_job_cli_01`.
-4.  Execute:
-    ```bash
-    docker compose exec -T whisper_worker python3 /app/transcribe.py \
-        --video /data/videos/nome_do_seu_video.mp4 \
-        --model small \
-        --output_dir /data/results/meu_job_cli_01
-    ```
-    Os resultados serão salvos em `./transcriber_web_app/results/meu_job_cli_01/` no host.
+## 🔐 Segurança
+
+- Validação de tipos de arquivo
+- Sanitização de nomes de arquivo
+- Isolamento via containers
+- Configurações de produção
+
+**Detalhes**: [SECURITY.md](transcriber_web_app/SECURITY.md)
+
+## 🤝 Contribuição
+
+1. **Fork** o projeto
+2. **Clone** seu fork
+3. **Leia**: [REQUIREMENTS.md](REQUIREMENTS.md) e [TESTING.md](TESTING.md)
+4. **Desenvolva** sua feature
+5. **Teste**: `python run_tests.py`
+6. **Envie** Pull Request
+
+### Para Desenvolvedores
+- **Exemplos de testes**: [example_new_test.py](transcriber_web_app/example_new_test.py)
+- **Configuração**: [manage_config.py](transcriber_web_app/manage_config.py)
+- **Estrutura**: Veja documentação de steering em `.kiro/steering/`
 
 ---
 
-🤝 Contribuição
----------------
-Suas contribuições são bem-vindas! Por favor, siga o processo padrão: fork, crie uma branch para sua feature/correção, faça commit das suas mudanças com mensagens claras e abra um Pull Request.
+## 📄 Licença
 
----
-
-📄 Licença
-----------
 Este projeto está licenciado sob a Licença MIT. Veja o arquivo `LICENSE` para mais detalhes.
 
----
+## ✉️ Contato
 
-✉️ Contato
-----------
-Para dúvidas, sugestões ou problemas, por favor, abra uma "Issue" no repositório GitHub: [https://github.com/malvesro/transcribe/issues](https://github.com/malvesro/transcribe/issues)
+Para dúvidas, sugestões ou problemas, abra uma [Issue](https://github.com/malvesro/transcribe/issues) no repositório GitHub.
