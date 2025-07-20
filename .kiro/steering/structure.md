@@ -6,8 +6,7 @@ transcribe/
 ├── docker-compose.yml          # Arquivo principal de orquestração
 ├── .env.example               # Template de variáveis de ambiente
 ├── setup.sh                  # Instalador Linux/macOS
-├── setup-simples.bat         # Instalador simples Windows
-├── instalador-facil.bat      # Instalador fácil Windows
+├── instalar-windows.bat      # Instalador inteligente Windows
 ├── README.md                 # Documentação do projeto
 └── transcriber_web_app/      # Diretório principal da aplicação
 ```

@@ -137,7 +137,7 @@ sequenceDiagram
 ```bash
 # Instalação automática (recomendada)
 bash setup.sh                    # Linux/macOS
-instalador-facil.bat            # Windows (executar como admin)
+instalar-windows.bat            # Windows (executar como admin)
 
 # Configuração manual
 git clone <repo>

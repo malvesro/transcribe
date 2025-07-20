@@ -74,6 +74,12 @@ instalar-windows.bat
 bash setup.sh
 ```
 
+**Recursos dos Instaladores:**
+- ✅ **Detecção inteligente** - Verifica componentes já instalados
+- ✅ **Feedback visual** - Barras de progresso e estimativas de tempo
+- ✅ **Atualização automática** - Atualiza projetos existentes
+- ✅ **Scripts de conveniência** - start-whisper.sh, stop-whisper.sh, logs-whisper.sh
+
 ### Instalação Manual
 ```bash
 # 1. Clonar repositório
@@ -128,20 +134,22 @@ TRANSCRIPTION_TIMEOUT=3600   # Timeout (segundos)
 
 ### Comandos Úteis
 ```bash
-# Ver configurações
-python transcriber_web_app/manage_config.py show
+# Scripts de conveniência (criados automaticamente)
+./start-whisper.sh           # Iniciar serviços
+./stop-whisper.sh            # Parar serviços  
+./logs-whisper.sh            # Ver logs em tempo real
 
-# Alterar limite de arquivo
+# Configuração
+python transcriber_web_app/manage_config.py show
 python transcriber_web_app/manage_config.py set-size --size 25
 
-# Executar testes
+# Testes
 python run_tests.py
 
-# Ver logs
-docker compose logs -f
-
-# Parar serviços
-docker compose down
+# Docker direto (alternativo)
+docker compose up -d         # Iniciar
+docker compose down          # Parar
+docker compose logs -f       # Logs
 ```
 
 ## 🧪 Testes
