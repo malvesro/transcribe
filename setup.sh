@@ -55,35 +55,48 @@ detect_os() {
 # Função para instalar Docker no Ubuntu/Debian
 install_docker_ubuntu() {
     echo -e "${BLUE}🔧 Instalando Docker no Ubuntu/Debian...${NC}"
+    echo -e "${YELLOW}⏳ Isso pode levar 5-10 minutos...${NC}\n"
+    
+    echo -e "${BLUE}� AProgresso da instalação:${NC}"
     
     # Atualizar sistema
-    echo -e "${BLUE}📦 Atualizando sistema...${NC}"
-    sudo apt update -y
+    echo -e "   ${BLUE}[1/7]${NC} 📦 Atualizando sistema..."
+    sudo apt update -y >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Sistema atualizado!${NC}"
     
     # Instalar dependências
-    echo -e "${BLUE}🔧 Instalando dependências...${NC}"
-    sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release
+    echo -e "   ${BLUE}[2/7]${NC} 🔧 Instalando dependências..."
+    sudo apt install -y apt-transport-https ca-certificates curl gnupg lsb-release >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Dependências instaladas!${NC}"
     
     # Adicionar chave GPG do Docker
-    echo -e "${BLUE}🔑 Adicionando chave GPG do Docker...${NC}"
-    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg
+    echo -e "   ${BLUE}[3/7]${NC} 🔑 Adicionando chave GPG do Docker..."
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg 2>/dev/null
+    echo -e "   ${GREEN}✅ Chave GPG adicionada!${NC}"
     
     # Adicionar repositório do Docker
-    echo -e "${BLUE}📦 Adicionando repositório do Docker...${NC}"
+    echo -e "   ${BLUE}[4/7]${NC} 📦 Adicionando repositório do Docker..."
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    echo -e "   ${GREEN}✅ Repositório adicionado!${NC}"
+    
+    # Atualizar repositórios
+    echo -e "   ${BLUE}[5/7]${NC} 🔄 Atualizando repositórios..."
+    sudo apt update -y >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Repositórios atualizados!${NC}"
     
     # Instalar Docker
-    echo -e "${BLUE}🐳 Instalando Docker...${NC}"
-    sudo apt update -y
-    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+    echo -e "   ${BLUE}[6/7]${NC} 🐳 Instalando Docker..."
+    sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Docker instalado!${NC}"
     
     # Configurar Docker
-    echo -e "${BLUE}⚙️ Configurando Docker...${NC}"
-    sudo systemctl enable docker
-    sudo systemctl start docker
-    sudo usermod -aG docker $USER
+    echo -e "   ${BLUE}[7/7]${NC} ⚙️ Configurando Docker..."
+    sudo systemctl enable docker >/dev/null 2>&1
+    sudo systemctl start docker >/dev/null 2>&1
+    sudo usermod -aG docker $USER >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Docker configurado!${NC}"
     
-    echo -e "${GREEN}✅ Docker instalado com sucesso!${NC}"
+    echo -e "\n${GREEN}✅ Docker instalado com sucesso!${NC}"
     echo -e "${YELLOW}⚠️  Você precisa fazer logout/login ou executar: newgrp docker${NC}"
 }
 
@@ -125,6 +138,44 @@ install_docker_macos() {
         echo -e "\n${YELLOW}Ou instale o Homebrew primeiro:${NC}"
         echo -e "   👉 /bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\""
         exit 1
+    fi
+}
+
+# Função para verificar se o projeto já existe
+check_existing_installation() {
+    echo -e "${BLUE}🔍 Verificando instalação existente...${NC}"
+    
+    if [ -d "transcribe" ]; then
+        echo -e "${GREEN}✅ Projeto já existe!${NC}"
+        echo -e "${BLUE}🔄 Atualizando projeto existente...${NC}"
+        
+        cd transcribe
+        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || {
+            echo -e "${YELLOW}⚠️  Não foi possível atualizar via git, continuando...${NC}"
+        }
+        
+        # Verificar se containers estão rodando
+        if docker compose ps | grep -q "Up" 2>/dev/null || docker-compose ps | grep -q "Up" 2>/dev/null; then
+            echo -e "${GREEN}✅ Serviços já estão rodando!${NC}"
+            echo -e "${BLUE}🔄 Reiniciando para aplicar atualizações...${NC}"
+            
+            if command -v docker-compose >/dev/null 2>&1; then
+                docker-compose down && docker-compose up --build -d
+            else
+                docker compose down && docker compose up --build -d
+            fi
+        else
+            echo -e "${BLUE}🚀 Iniciando serviços...${NC}"
+            if command -v docker-compose >/dev/null 2>&1; then
+                docker-compose up --build -d
+            else
+                docker compose up --build -d
+            fi
+        fi
+        
+        echo -e "${GREEN}✅ Atualização concluída!${NC}"
+        echo -e "${GREEN}🌐 Acesse: http://localhost:5000${NC}"
+        exit 0
     fi
 }
 
@@ -248,16 +299,30 @@ EOF
 # Função para iniciar serviços
 start_services() {
     echo -e "\n${BLUE}🏗️ Construindo e iniciando os serviços...${NC}"
-    echo -e "${YELLOW}⏳ Isso pode levar alguns minutos na primeira vez...${NC}\n"
+    echo -e "${YELLOW}⏳ Isso pode levar 5-15 minutos na primeira vez...${NC}"
+    echo -e "${BLUE}💡 Baixando imagens Docker e construindo containers...${NC}\n"
     
-    if ! $COMPOSE_CMD up --build -d; then
+    echo -e "${BLUE}📊 Progresso:${NC}"
+    echo -e "   ${BLUE}[1/3]${NC} 📥 Baixando imagens base..."
+    $COMPOSE_CMD pull >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Imagens baixadas!${NC}"
+    
+    echo -e "   ${BLUE}[2/3]${NC} 🏗️  Construindo aplicação..."
+    $COMPOSE_CMD build >/dev/null 2>&1
+    echo -e "   ${GREEN}✅ Aplicação construída!${NC}"
+    
+    echo -e "   ${BLUE}[3/3]${NC} 🚀 Iniciando serviços..."
+    if ! $COMPOSE_CMD up -d; then
         echo -e "\n${RED}❌ ERRO: Falha ao iniciar os serviços!${NC}\n"
         echo -e "${YELLOW}🔧 Possíveis soluções:${NC}"
         echo -e "   1. Verifique se o Docker está funcionando"
         echo -e "   2. Execute: $COMPOSE_CMD down"
         echo -e "   3. Tente novamente\n"
+        echo -e "${BLUE}📋 Logs para diagnóstico:${NC}"
+        $COMPOSE_CMD logs
         exit 1
     fi
+    echo -e "   ${GREEN}✅ Serviços iniciados!${NC}"
     
     # Aguardar serviços ficarem prontos
     echo -e "\n${BLUE}⏳ Aguardando serviços ficarem prontos...${NC}"
@@ -307,32 +372,54 @@ show_success() {
 # Função para baixar projeto
 download_project() {
     echo -e "\n${BLUE}📥 Baixando Whisper Transcriber...${NC}"
+    echo -e "${YELLOW}⏳ Isso pode levar alguns minutos dependendo da sua conexão...${NC}\n"
     
     if [ -d "transcribe" ]; then
         echo -e "${YELLOW}⚠️  Diretório 'transcribe' já existe, removendo...${NC}"
         rm -rf transcribe
     fi
     
+    echo -e "${BLUE}📊 Progresso do download:${NC}"
+    
     if command_exists git; then
-        git clone https://github.com/malvesro/transcribe.git
+        echo -e "   ${BLUE}[1/2]${NC} 📡 Conectando ao GitHub..."
+        if ! git clone https://github.com/malvesro/transcribe.git >/dev/null 2>&1; then
+            echo -e "\n${RED}❌ ERRO: Falha ao baixar o projeto!${NC}\n"
+            echo -e "${YELLOW}🔧 Possíveis soluções:${NC}"
+            echo -e "   1. Verifique sua conexão com a internet"
+            echo -e "   2. Tente novamente em alguns minutos\n"
+            exit 1
+        fi
+        echo -e "   ${GREEN}✅ Conectado ao GitHub!${NC}"
+        echo -e "   ${BLUE}[2/2]${NC} 📁 Entrando no diretório do projeto..."
         cd transcribe
+        echo -e "   ${GREEN}✅ Projeto baixado com sucesso!${NC}"
     else
-        echo -e "${YELLOW}⚠️  Git não encontrado, instalando...${NC}"
+        echo -e "   ${BLUE}[1/3]${NC} ⚠️  Git não encontrado, instalando..."
         if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
-            sudo apt install -y git
+            sudo apt install -y git >/dev/null 2>&1
         elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]] || [[ "$OS" == *"Fedora"* ]]; then
-            sudo yum install -y git
+            sudo yum install -y git >/dev/null 2>&1
         elif [[ "$OS" == "macOS" ]]; then
             if command_exists brew; then
-                brew install git
+                brew install git >/dev/null 2>&1
             else
-                echo -e "${RED}❌ ERRO: Não foi possível instalar git${NC}"
+                echo -e "\n${RED}❌ ERRO: Não foi possível instalar git${NC}"
+                echo -e "${YELLOW}💡 Instale o Homebrew primeiro ou instale git manualmente${NC}"
                 exit 1
             fi
         fi
+        echo -e "   ${GREEN}✅ Git instalado!${NC}"
         
-        git clone https://github.com/malvesro/transcribe.git
+        echo -e "   ${BLUE}[2/3]${NC} 📡 Conectando ao GitHub..."
+        if ! git clone https://github.com/malvesro/transcribe.git >/dev/null 2>&1; then
+            echo -e "\n${RED}❌ ERRO: Falha ao baixar o projeto!${NC}\n"
+            exit 1
+        fi
+        echo -e "   ${GREEN}✅ Conectado ao GitHub!${NC}"
+        echo -e "   ${BLUE}[3/3]${NC} 📁 Entrando no diretório do projeto..."
         cd transcribe
+        echo -e "   ${GREEN}✅ Projeto baixado com sucesso!${NC}"
     fi
     
     echo -e "${GREEN}✅ Projeto baixado com sucesso!${NC}"
@@ -341,6 +428,9 @@ download_project() {
 # Função para criar scripts de conveniência
 create_convenience_scripts() {
     echo -e "\n${BLUE}📝 Criando scripts de conveniência...${NC}"
+    echo -e "${BLUE}💡 Estes scripts facilitarão o uso do Whisper Transcriber${NC}\n"
+    
+    echo -e "${BLUE}📊 Progresso dos scripts:${NC}"
     
     # Script para iniciar
     cat > start-whisper.sh << 'EOF'
@@ -400,19 +490,32 @@ echo "Pressione Ctrl+C para sair"
 $COMPOSE_CMD logs -f
 EOF
 
-    # Tornar scripts executáveis
-    chmod +x start-whisper.sh stop-whisper.sh logs-whisper.sh
+    echo -e "   ${BLUE}[1/4]${NC} 📝 Criando start-whisper.sh..."
+    echo -e "   ${GREEN}✅ Script de inicialização criado!${NC}"
     
-    echo -e "${GREEN}✅ Scripts de conveniência criados!${NC}"
-    echo -e "${BLUE}   • start-whisper.sh - Iniciar serviços${NC}"
-    echo -e "${BLUE}   • stop-whisper.sh  - Parar serviços${NC}"
-    echo -e "${BLUE}   • logs-whisper.sh  - Ver logs${NC}"
+    echo -e "   ${BLUE}[2/4]${NC} 📝 Criando stop-whisper.sh..."
+    echo -e "   ${GREEN}✅ Script de parada criado!${NC}"
+    
+    echo -e "   ${BLUE}[3/4]${NC} 📝 Criando logs-whisper.sh..."
+    echo -e "   ${GREEN}✅ Script de logs criado!${NC}"
+    
+    # Tornar scripts executáveis
+    echo -e "   ${BLUE}[4/4]${NC} ⚙️ Tornando scripts executáveis..."
+    chmod +x start-whisper.sh stop-whisper.sh logs-whisper.sh
+    echo -e "   ${GREEN}✅ Permissões configuradas!${NC}"
+    
+    echo -e "\n${GREEN}✅ Scripts de conveniência criados com sucesso!${NC}"
+    echo -e "${BLUE}📋 Scripts disponíveis:${NC}"
+    echo -e "   ${GREEN}• start-whisper.sh${NC} - Iniciar serviços"
+    echo -e "   ${GREEN}• stop-whisper.sh${NC}  - Parar serviços"
+    echo -e "   ${GREEN}• logs-whisper.sh${NC}  - Ver logs em tempo real"
 }
 
 # Função principal
 main() {
     print_header
     detect_os
+    check_existing_installation  # Verificar se já existe instalação
     check_and_install_docker
     check_docker_compose
     download_project

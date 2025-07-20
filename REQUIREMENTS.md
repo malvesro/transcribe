@@ -50,7 +50,7 @@ O Whisper Transcriber é uma aplicação web containerizada que utiliza Docker p
 #### Comandos de Instalação:
 ```bash
 # Windows (executar como Administrador)
-instalador-facil.bat
+instalar-windows.bat
 
 # Linux/macOS
 bash setup.sh

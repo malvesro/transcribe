@@ -49,7 +49,7 @@ Este projeto possui documentação organizada por perfil de usuário e necessida
   - *Importante para deployments em produção*
 
 ### 🛠️ **Scripts e Ferramentas**
-- **[instalador-facil.bat](instalador-facil.bat)** / **[setup.sh](setup.sh)** - Instalação automática
+- **[instalar-windows.bat](instalar-windows.bat)** / **[setup.sh](setup.sh)** - Instalação automática e inteligente
 - **[run_tests.py](run_tests.py)** - Execução inteligente de testes
 - **[manage_config.py](transcriber_web_app/manage_config.py)** - Gerenciamento de configurações
 - **[example_new_test.py](transcriber_web_app/example_new_test.py)** - Exemplos para desenvolvedores
@@ -68,7 +68,7 @@ Este projeto possui documentação organizada por perfil de usuário e necessida
 ### Instalação Automática (Recomendada)
 ```bash
 # Windows (executar como Administrador)
-instalador-facil.bat
+instalar-windows.bat
 
 # Linux/macOS
 bash setup.sh
