@@ -42,9 +42,21 @@ def allowed_file(filename):
     if extension not in app.config['ALLOWED_EXTENSIONS']:
         return False
     
-    # Verificar se o nome do arquivo é seguro
-    secure_name = secure_filename(filename)
-    return secure_name == filename and len(filename) <= app.config['MAX_FILENAME_LENGTH']
+    # Verificar tamanho do nome
+    if len(filename) > app.config['MAX_FILENAME_LENGTH']:
+        return False
+    
+    # Verificar caracteres perigosos (mas permitir espaços e pontos duplos no nome)
+    dangerous_chars = ['/', '\\', '<', '>', ':', '"', '|', '?', '*']
+    for char in dangerous_chars:
+        if char in filename:
+            return False
+    
+    # Verificar path traversal específico (mas não pontos duplos no nome do arquivo)
+    if filename.startswith('..') or '/..' in filename or '\\..' in filename:
+        return False
+    
+    return True
 
 @app.route('/')
 def index():
