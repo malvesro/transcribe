@@ -510,8 +510,8 @@ goto :success
         :: --- Scripts para WSL ---
         (
             echo @echo off
-            echo echo Iniciando o Whisper Transcriber via WSL...
-            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && ./start-whisper.sh"
+            echo echo Iniciando e verificando atualizacoes do Whisper Transcriber via WSL...
+            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && sudo docker-compose up --build -d"
             echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
         ) > "start.bat"
 
@@ -530,8 +530,8 @@ goto :success
         :: --- Scripts para Docker Desktop ---
         (
             echo @echo off
-            echo echo Iniciando o Whisper Transcriber...
-            echo docker compose up -d
+            echo echo Iniciando e verificando atualizacoes do Whisper Transcriber...
+            echo docker compose up --build -d
             echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
         ) > "start.bat"
 

@@ -393,8 +393,8 @@ else
     COMPOSE_CMD="docker-compose"
 fi
 
-echo "🎙️ Iniciando Whisper Transcriber..."
-sudo $COMPOSE_CMD up -d
+echo "🎙️ Iniciando e verificando atualizacoes do Whisper Transcriber..."
+sudo $COMPOSE_CMD up --build -d
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber iniciado com sucesso!"
