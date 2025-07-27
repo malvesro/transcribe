@@ -512,7 +512,7 @@ goto :success
             echo @echo off
             echo echo Iniciando e verificando atualizacoes do Whisper Transcriber via WSL...
             echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && sudo docker-compose up --build -d"
-            echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
+            echo echo. ^& echo Aplicacao iniciada! Acesse: http://localhost:5000
         ) > "start.bat"
 
         (
@@ -532,7 +532,7 @@ goto :success
             echo @echo off
             echo echo Iniciando e verificando atualizacoes do Whisper Transcriber...
             echo docker compose up --build -d
-            echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
+            echo echo. ^& echo Aplicacao iniciada! Acesse: http://localhost:5000
         ) > "start.bat"
 
         (
