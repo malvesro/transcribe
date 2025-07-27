@@ -118,7 +118,7 @@ if not errorlevel 1 (
 ) else (
     echo 🐳 Detectado: instalação via Docker Desktop
     echo 🔄 Atualizando via Docker Desktop...
-    
+
     :: Verificar se Docker está funcionando
     docker info >nul 2>&1
     if errorlevel 1 (
@@ -127,7 +127,7 @@ if not errorlevel 1 (
         pause
         exit /b 1
     )
-    
+
     :: Atualizar via git se possível
     git pull >nul 2>&1
     if not errorlevel 1 (
@@ -135,7 +135,7 @@ if not errorlevel 1 (
     ) else (
         echo ⚠️  Não foi possível atualizar via git, continuando...
     )
-    
+
     :: Reiniciar serviços
     echo 🔄 Reiniciando serviços...
     docker compose down >nul 2>&1
