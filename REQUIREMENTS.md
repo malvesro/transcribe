@@ -37,7 +37,7 @@ O Whisper Transcriber é uma aplicação web containerizada que utiliza Docker p
 #### Requisitos Mínimos:
 - **Sistema**: Windows 10 2004+ ou Linux/macOS moderno
 - **RAM**: 4GB (8GB recomendado)
-- **Armazenamento**: 20GB livres
+- **Armazenamento**: 50GB livres (ver seção de "Armazenamento" para detalhes)
 - **Privilégios**: Administrador (apenas durante instalação)
 - **Internet**: Conexão estável para downloads
 
@@ -374,9 +374,12 @@ sudo ufw allow 5000/tcp
 
 ## 📦 Dependências Python
 
-### Dependências Principais
+As dependências do projeto são gerenciadas em dois locais, um para cada container, para manter os ambientes isolados e otimizados.
 
-#### Arquivo `requirements.txt`:
+### Dependências da WebApp (`transcriber_web_app/requirements.txt`)
+
+Estas são as dependências para a interface web e o gerenciamento dos workers.
+
 ```
 Flask>=2.3.0              # Framework web
 python-dotenv>=1.0.0      # Gerenciamento de variáveis de ambiente
@@ -387,7 +390,10 @@ pytest>=7.4.0           # Framework de testes
 pytest-cov>=4.1.0       # Cobertura de testes
 ```
 
-#### Dependências do Container Whisper:
+### Dependências do Whisper Worker
+
+Estas dependências são definidas diretamente no `Dockerfile.whisper` e incluem a biblioteca do Whisper e o PyTorch para processamento de IA.
+
 ```
 torch>=2.0.0             # PyTorch (deep learning)
 torchvision>=0.15.0      # Visão computacional

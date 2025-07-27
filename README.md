@@ -35,12 +35,6 @@ Este projeto possui documentação organizada por perfil de usuário e necessida
   - Configuração de ambiente de desenvolvimento
   - *Essencial para contribuir com o projeto*
 
-- **[.kiro/steering/tech.md](.kiro/steering/tech.md)** - **Arquitetura técnica detalhada**
-  - Diagramas de arquitetura (C4 Model, Mermaid)
-  - Stack tecnológico e dependências
-  - Fluxos de processo e comunicação entre componentes
-  - *Para entender a arquitetura interna do sistema*
-
 ### 🔒 **Para Administradores**
 - **[SECURITY.md](transcriber_web_app/SECURITY.md)** - **Diretrizes de segurança**
   - Configurações de produção
@@ -59,7 +53,7 @@ Este projeto possui documentação organizada por perfil de usuário e necessida
 | Seu Objetivo | Documentos Recomendados | Ordem de Leitura |
 |--------------|-------------------------|-------------------|
 | **Usar a ferramenta** | REQUIREMENTS.md → README.md | 1. Verificar requisitos<br>2. Instalar e usar |
-| **Desenvolver/Contribuir** | REQUIREMENTS.md → TESTING.md → tech.md | 1. Configurar ambiente<br>2. Executar testes<br>3. Entender arquitetura |
+| **Desenvolver/Contribuir** | REQUIREMENTS.md → TESTING.md | 1. Configurar ambiente<br>2. Executar testes<br>3. Entender arquitetura |
 | **Deploy em produção** | REQUIREMENTS.md → SECURITY.md | 1. Planejar infraestrutura<br>2. Configurar segurança |
 | **Resolver problemas** | REQUIREMENTS.md (Troubleshooting) → TESTING.md | 1. Diagnóstico<br>2. Testes para validar |
 
@@ -78,7 +72,7 @@ bash setup.sh
 - ✅ **Detecção inteligente** - Verifica componentes já instalados
 - ✅ **Feedback visual** - Barras de progresso e estimativas de tempo
 - ✅ **Atualização automática** - Atualiza projetos existentes
-- ✅ **Scripts de conveniência** - start-whisper.sh, stop-whisper.sh, logs-whisper.sh
+- ✅ **Scripts de conveniência** - Cria `start-whisper.sh`, `stop-whisper.sh`, e `logs-whisper.sh` para facilitar o gerenciamento.
 
 ### Instalação Manual
 ```bash
@@ -103,24 +97,48 @@ docker compose up --build -d
 
 ## 🏗️ Arquitetura
 
+A aplicação utiliza uma arquitetura de microserviços orquestrada pelo Docker Compose, garantindo isolamento e escalabilidade.
+
 ### Componentes
-- **WebApp (Flask)**: Interface web e API
-- **Whisper Worker**: Processamento IA com GPU/CPU
-- **Docker Compose**: Orquestração de serviços
+- **WebApp (Flask)**: Container responsável por servir a interface web (HTML, CSS, JS), gerenciar uploads de arquivos e se comunicar com o worker.
+- **Whisper Worker**: Container dedicado que executa o modelo de transcrição da OpenAI. Ele é iniciado sob demanda pela WebApp e processa os arquivos de forma isolada.
+- **Docker Compose**: Ferramenta que define e gerencia os serviços, redes e volumes da aplicação.
 
-### Comunicação
-- Volumes compartilhados para arquivos
-- API Docker para controle de workers
-- Progresso em tempo real via JSON
+### Fluxo de Comunicação
+1.  O **Usuário** acessa a interface web e faz o upload de um arquivo.
+2.  A **WebApp (Flask)** recebe o arquivo, o salva em um volume compartilhado e valida a requisição.
+3.  A **WebApp** utiliza a **API do Docker** para iniciar um novo container **Whisper Worker** sob demanda, passando o caminho do arquivo a ser processado.
+4.  O **Whisper Worker** processa o áudio, gera os arquivos de transcrição (TXT, SRT, VTT) e os salva no mesmo volume compartilhado.
+5.  A **WebApp** monitora o status do processo e, ao finalizar, disponibiliza os links para download dos resultados para o **Usuário**.
 
-### Diagramas
+### Diagrama de Fluxo
 ```mermaid
 flowchart LR
-    U[Usuário] --> W[WebApp Flask]
-    W --> D[Docker API]
-    D --> WW[Whisper Worker]
-    WW --> V[(Volumes)]
-    W --> V
+    subgraph "Navegador do Usuário"
+        U[Usuário]
+    end
+
+    subgraph "Host Docker"
+        subgraph "WebApp Container"
+            W[Flask App]
+        end
+
+        subgraph "Whisper Worker Container"
+            WW[Whisper AI]
+        end
+
+        V[(Volume Compartilhado)]
+        D[Docker API]
+    end
+
+    U -- 1. Upload de arquivo --> W
+    W -- 2. Salva arquivo --> V
+    W -- 3. Inicia Worker via --> D
+    D -- 4. Cria container --> WW
+    WW -- 5. Lê arquivo de --> V
+    WW -- 6. Salva transcrição em --> V
+    W -- 7. Lê resultados de --> V
+    W -- 8. Disponibiliza download --> U
 ```
 
 ## ⚙️ Configuração
@@ -188,7 +206,6 @@ python run_tests.py --full
 ### Para Desenvolvedores
 - **Exemplos de testes**: [example_new_test.py](transcriber_web_app/example_new_test.py)
 - **Configuração**: [manage_config.py](transcriber_web_app/manage_config.py)
-- **Estrutura**: Veja documentação de steering em `.kiro/steering/`
 
 ---
 

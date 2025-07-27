@@ -176,14 +176,15 @@ python transcriber_web_app/healthcheck.py
 ## 📁 Estrutura dos Testes
 
 ```
-transcribe/
+.
 ├── run_tests.py                    # 🎯 Script principal de testes
 ├── TESTING.md                      # 📖 Esta documentação
 └── transcriber_web_app/
     ├── test_app.py                # 🐳 Testes completos (com Docker)
     ├── test_local.py              # 🏠 Testes locais (sem Docker)
     ├── healthcheck.py             # 💊 Verificação de saúde
-    └── requirements.txt           # 📦 Dependências
+    ├── example_new_test.py        # 📄 Exemplo de novo teste
+    └── requirements.txt           # 📦 Dependências da WebApp
 ```
 
 ### Arquivos de Teste Detalhados
@@ -345,28 +346,22 @@ docker compose logs webapp
 ### Adicionando Novos Testes
 
 #### 1. Para Funcionalidade Sem Docker
-Adicione em `test_local.py`:
+Adicione em `test_local.py`. Use `assert` para as verificações:
 ```python
-class TestMinhaNovaFuncionalidade(LocalTranscriberTestCase):
-    def test_minha_funcionalidade(self):
-        """Testa minha nova funcionalidade"""
-        # Seu código de teste aqui
-        self.assertTrue(True)
+def test_minha_nova_funcionalidade():
+    """Testa a nova funcionalidade X."""
+    resultado = minha_funcao_nova(parametro=1)
+    assert resultado is True
 ```
 
 #### 2. Para Funcionalidade Com Docker
-Adicione em `test_app.py`:
+Adicione em `test_app.py`. Use o `client` do pytest para simular requisições:
 ```python
-class TestMinhaIntegracao(TranscriberTestCase):
-    @patch('app.docker.from_env')
-    def test_integracao_docker(self, mock_docker):
-        """Testa integração com Docker"""
-        # Mock do Docker
-        mock_client = MagicMock()
-        mock_docker.return_value = mock_client
-        
-        # Seu teste aqui
-        self.assertTrue(True)
+def test_minha_integracao_com_docker(client):
+    """Testa a integração da funcionalidade Y com o Docker."""
+    response = client.get("/minha-nova-rota")
+    assert response.status_code == 200
+    assert b"Resultado esperado" in response.data
 ```
 
 ### Boas Práticas para Testes
