@@ -21,19 +21,27 @@ echo.
 :: Verificar se está executando como administrador
 net session >nul 2>&1
 if errorlevel 1 (
-    echo ❌ ERRO: Este script precisa ser executado como Administrador
-    echo.
-    echo 🔧 Como executar como Administrador:
-    echo    1. Clique com botão direito neste arquivo
-    echo    2. Selecione "Executar como administrador"
-    echo    3. Clique "Sim" quando perguntado
-    echo.
-    pause
-    exit /b 1
+    set "IS_ADMIN=0"
+    goto :non_admin_flow
 )
-
+set "IS_ADMIN=1"
 echo ✅ Executando como Administrador - OK!
 echo.
+goto :main_flow
+
+:non_admin_flow
+echo ⚠️  Voce nao esta executando como Administrador.
+echo.
+echo    O script tentara usar uma instalacao existente do Docker/WSL,
+echo    mas nao podera instalar ou corrigir componentes do sistema.
+echo.
+echo    Se a verificacao falhar, peca ao seu administrador de TI para
+echo    instalar as dependencias necessarias.
+echo.
+pause
+goto :verify_existing_environment
+
+:main_flow
 
 :: Verificar se o projeto já existe
 echo 🔍 Verificando se o projeto já existe...
@@ -69,15 +77,30 @@ if not errorlevel 1 (
 )
 
 :: Docker Desktop não encontrado, usar WSL2
-echo 📦 Docker Desktop não encontrado
-echo 🎯 Usando WSL2 + Ubuntu + Docker nativo (método leve)
+echo 📦 Docker Desktop nao encontrado.
+echo 🎯 O instalador ira configurar o ambiente usando o WSL2.
 echo.
-echo 🔧 O que será instalado:
-echo    • WSL2 (Subsistema Linux para Windows)
-echo    • Ubuntu (sistema Linux leve)
-echo    • Docker nativo (dentro do Ubuntu)
-echo    • Whisper Transcriber
+echo    O WSL2 (Subsistema Windows para Linux) e um recurso oficial da Microsoft
+echo    que permite rodar um ambiente Linux seguro e isolado dentro do Windows.
+echo    Isto e necessario para executar a aplicacao.
 echo.
+pause
+
+:: Verificar virtualização antes de prosseguir
+echo 🔍 Verificando se a virtualizacao esta ativada...
+systeminfo | find "Hyper-V" | find "Sim" >nul
+if errorlevel 1 (
+    echo ❌ ERRO: A virtualizacao de hardware nao esta ativada na BIOS/UEFI.
+    echo.
+    echo    Isto e essencial para o WSL2 e Docker funcionarem.
+    echo    Voce precisara reiniciar o computador, entrar na BIOS/UEFI e
+    echo    procurar por uma opcao como "Virtualization Technology (VT-x)"
+    echo    ou "SVM Mode" e habilita-la.
+    echo.
+    pause
+    exit /b 1
+)
+echo ✅ Virtualizacao ativada!
 goto :install_with_wsl
 
 :: ============================================================================
@@ -261,7 +284,6 @@ if not errorlevel 1 (
 :: Instalar Ubuntu
 echo 📦 Instalando Ubuntu...
 echo ⏳ Baixando e instalando Ubuntu (pode levar 5-10 minutos)...
-echo 💡 Aguarde, o processo está rodando em segundo plano...
 wsl --install -d Ubuntu --no-launch
 if errorlevel 1 (
     echo ❌ ERRO: Falha ao instalar Ubuntu
@@ -269,8 +291,25 @@ if errorlevel 1 (
     pause
     exit /b 1
 )
-echo ✅ Ubuntu instalado com sucesso!
-timeout /t 5 /nobreak >nul
+echo.
+echo ----------------------------------------------------------------------
+echo ❗ ACAO NECESSARIA - CRIE SEU USUARIO E SENHA NO UBUNTU ❗
+echo ----------------------------------------------------------------------
+echo.
+echo Uma nova janela do Ubuntu pode ter aberto. Se nao, ela abrira agora.
+echo Siga os passos NESSA NOVA JANELA:
+echo.
+echo   1. Crie um NOME DE USUARIO (ex: seu nome, sem espacos).
+echo   2. Crie uma SENHA para ele. ANOTE ESTA SENHA.
+echo   3. Apos confirmar a senha, o processo terminara.
+echo.
+echo DEPOIS de criar o usuario, voce pode fechar a janela do Ubuntu.
+echo.
+echo Pressione qualquer tecla para continuar QUANDO TIVER TERMINADO...
+pause >nul
+start "Ubuntu Setup" wsl -d Ubuntu
+echo.
+echo ✅ Ubuntu instalado e configurado!
 
 :check_docker_wsl
 :: Verificar Docker no Ubuntu
@@ -383,33 +422,23 @@ echo ✅ Scripts de conveniência criados!
 goto :success
 
 :: ============================================================================
-:: SUCESSO
+:: SUCESSO E SCRIPTS DE ATALHO
 :: ============================================================================
 :success
+call :create_shortcut_scripts
 echo.
 echo ████████████████████████████████████████████████████████████████████████████
 echo                        ✅ INSTALAÇÃO CONCLUÍDA!
 echo ████████████████████████████████████████████████████████████████████████████
 echo.
 echo 🎉 O Whisper Transcriber está funcionando!
-echo 🌐 ACESSE AGORA: http://localhost:5000
 echo.
-
-:: Detectar método usado para instruções específicas
-wsl -d Ubuntu -- test -d ~/transcribe >nul 2>&1
-if not errorlevel 1 (
-    echo 📋 Instalação via WSL2 - Comandos úteis:
-    echo    🚀 Iniciar: wsl -d Ubuntu -- bash ~/transcribe/start-whisper.sh
-    echo    ⏹️  Parar:   wsl -d Ubuntu -- bash ~/transcribe/stop-whisper.sh
-    echo    📜 Logs:    wsl -d Ubuntu -- bash ~/transcribe/logs-whisper.sh
-    echo    📁 Arquivos: wsl -d Ubuntu -- explorer.exe ~/transcribe/transcriber_web_app/videos/
-) else (
-    echo 📋 Instalação via Docker Desktop - Comandos úteis:
-    echo    🚀 Iniciar: docker compose up -d
-    echo    ⏹️  Parar:   docker compose down
-    echo    📜 Logs:    docker compose logs -f
-    echo    📁 Arquivos: .\transcriber_web_app\videos\
-)
+echo Para gerenciar a aplicacao, use os seguintes scripts na pasta do projeto:
+echo    🚀 start.bat - Para iniciar a aplicacao.
+echo    ⏹️  stop.bat - Para parar a aplicacao.
+echo    📁 open-files-folder.bat - Para abrir a pasta de videos.
+echo.
+echo 🌐 ACESSE AGORA: http://localhost:5000
 
 echo.
 echo 🚀 Abrindo navegador...
@@ -419,3 +448,104 @@ start http://localhost:5000
 echo.
 echo Pressione qualquer tecla para sair...
 pause >nul
+
+:: ============================================================================
+:: FLUXO PARA NÃO-ADMINISTRADORES
+:: ============================================================================
+:verify_existing_environment
+echo.
+echo 🔍 Verificando ambiente pre-existente...
+echo.
+
+:: 1. Verificar Docker Desktop
+docker info >nul 2>&1
+if not errorlevel 1 (
+    echo ✅ Docker Desktop detectado e funcionando.
+    goto :install_with_docker_desktop
+)
+
+:: 2. Verificar WSL
+wsl -l -v >nul 2>&1
+if errorlevel 1 (
+    echo ❌ ERRO: Nem Docker Desktop nem WSL foram encontrados.
+    echo    Peça ao seu administrador para instalar um dos dois.
+    pause
+    exit /b 1
+)
+echo ✅ WSL detectado.
+
+:: 3. Verificar Docker no WSL
+wsl -d Ubuntu -- docker info >nul 2>&1
+if errorlevel 1 (
+    echo ❌ ERRO: O Docker nao esta funcionando dentro do WSL.
+    echo    Peça ao seu administrador para instalar o Docker no Ubuntu
+    echo    e adicionar seu usuario ao grupo 'docker'.
+    pause
+    exit /b 1
+)
+echo ✅ Docker no WSL detectado e funcionando.
+goto :install_project_wsl_non_admin
+
+:install_project_wsl_non_admin
+echo.
+echo 🚀 Configurando o projeto no ambiente WSL existente...
+wsl -d Ubuntu -- test -d ~/transcribe >nul 2>&1
+if not errorlevel 1 (
+    echo ✅ Projeto ja existe. Atualizando...
+    wsl -d Ubuntu -- bash -c "cd ~/transcribe && git pull && docker-compose up --build -d"
+) else (
+    echo 📥 Baixando e iniciando o projeto...
+    wsl -d Ubuntu -- bash -c "git clone https://github.com/malvesro/transcribe.git ~/transcribe"
+    wsl -d Ubuntu -- bash -c "cd ~/transcribe && docker-compose up --build -d"
+)
+goto :success
+
+:create_shortcut_scripts
+    echo.
+    echo 📝 Criando scripts de atalho...
+
+    :: Detectar se a instalação foi via WSL ou Docker Desktop
+    wsl -d Ubuntu -- test -d ~/transcribe >nul 2>&1
+    if not errorlevel 1 (
+        :: --- Scripts para WSL ---
+        (
+            echo @echo off
+            echo echo Iniciando o Whisper Transcriber via WSL...
+            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && ./start-whisper.sh"
+            echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
+        ) > "start.bat"
+
+        (
+            echo @echo off
+            echo echo Parando o Whisper Transcriber via WSL...
+            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && ./stop-whisper.sh"
+        ) > "stop.bat"
+
+        (
+            echo @echo off
+            echo echo Abrindo a pasta de arquivos no WSL...
+            echo wsl -d Ubuntu -- explorer.exe ~/transcribe/transcriber_web_app/videos
+        ) > "open-files-folder.bat"
+    ) else (
+        :: --- Scripts para Docker Desktop ---
+        (
+            echo @echo off
+            echo echo Iniciando o Whisper Transcriber...
+            echo docker compose up -d
+            echo echo. & echo Aplicacao iniciada! Acesse: http://localhost:5000
+        ) > "start.bat"
+
+        (
+            echo @echo off
+            echo echo Parando o Whisper Transcriber...
+            echo docker compose down
+        ) > "stop.bat"
+
+        (
+            echo @echo off
+            echo echo Abrindo a pasta de arquivos...
+            echo explorer.exe .\\transcriber_web_app\\videos
+        ) > "open-files-folder.bat"
+    )
+    echo ✅ Scripts de atalho criados!
+    goto :eof
