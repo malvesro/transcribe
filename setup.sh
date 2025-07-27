@@ -453,7 +453,7 @@ else
 fi
 
 echo "🎙️ Iniciando Whisper Transcriber..."
-$COMPOSE_CMD up -d
+sudo $COMPOSE_CMD up -d
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber iniciado com sucesso!"
@@ -475,7 +475,7 @@ else
 fi
 
 echo "⏹️ Parando Whisper Transcriber..."
-$COMPOSE_CMD down
+sudo $COMPOSE_CMD down
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber parado com sucesso!"
