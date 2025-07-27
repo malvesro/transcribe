@@ -151,39 +151,36 @@ install_docker_macos() {
     fi
 }
 
-# Função para verificar se o projeto já existe
-check_existing_installation() {
-    echo -e "${BLUE}🔍 Verificando instalação existente...${NC}"
+# Função para verificar se o ambiente já está configurado
+check_existing_environment() {
+    echo -e "${BLUE}🔍 Verificando ambiente existente...${NC}"
     
-    if [ -d "transcribe" ]; then
-        echo -e "${GREEN}✅ Projeto já existe!${NC}"
-        echo -e "${BLUE}🔄 Atualizando projeto existente...${NC}"
+    # Se o diretório de resultados e o .env existem, assume-se que a instalação já foi feita.
+    if [ -d "transcriber_web_app/results" ] && [ -f ".env" ]; then
+        echo -e "${GREEN}✅ Ambiente já configurado!${NC}"
+        echo -e "${BLUE}🔄 Tentando atualizar o código e reiniciar os serviços...${NC}"
         
-        cd transcribe
-        git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || {
-            echo -e "${YELLOW}⚠️  Não foi possível atualizar via git, continuando...${NC}"
-        }
-        
-        # Verificar se containers estão rodando
-        if docker compose ps | grep -q "Up" 2>/dev/null || docker-compose ps | grep -q "Up" 2>/dev/null; then
-            echo -e "${GREEN}✅ Serviços já estão rodando!${NC}"
-            echo -e "${BLUE}🔄 Reiniciando para aplicar atualizações...${NC}"
-            
-            if command -v docker-compose >/dev/null 2>&1; then
-                docker-compose down && docker-compose up --build -d
-            else
-                docker compose down && docker compose up --build -d
-            fi
-        else
-            echo -e "${BLUE}🚀 Iniciando serviços...${NC}"
-            if command -v docker-compose >/dev/null 2>&1; then
-                docker-compose up --build -d
-            else
-                docker compose up --build -d
-            fi
+        if [ -d ".git" ]; then
+            git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || {
+                echo -e "${YELLOW}⚠️  Não foi possível atualizar via git, continuando...${NC}"
+            }
         fi
+
+        # Determina o comando do compose
+        if docker compose version >/dev/null 2>&1; then
+            COMPOSE_CMD="docker compose"
+        elif command_exists docker-compose; then
+            COMPOSE_CMD="docker-compose"
+        else
+             echo -e "${RED}❌ ERRO: Docker Compose não encontrado! Não é possível reiniciar.${NC}"
+             exit 1
+        fi
+
+        echo -e "${BLUE}🔄 Reiniciando serviços...${NC}"
+        sudo $COMPOSE_CMD down >/dev/null 2>&1
+        sudo $COMPOSE_CMD up --build -d
         
-        echo -e "${GREEN}✅ Atualização concluída!${NC}"
+        echo -e "${GREEN}✅ Atualização e reinicialização concluídas!${NC}"
         echo -e "${GREEN}🌐 Acesse: http://localhost:5000${NC}"
         exit 0
     fi
@@ -379,62 +376,6 @@ show_success() {
     read
 }
 
-# Função para baixar projeto
-download_project() {
-    echo -e "\n${BLUE}📥 Baixando Whisper Transcriber...${NC}"
-    echo -e "${YELLOW}⏳ Isso pode levar alguns minutos dependendo da sua conexão...${NC}\n"
-    
-    if [ -d "transcribe" ]; then
-        echo -e "${YELLOW}⚠️  Diretório 'transcribe' já existe, removendo...${NC}"
-        rm -rf transcribe
-    fi
-    
-    echo -e "${BLUE}📊 Progresso do download:${NC}"
-    
-    if command_exists git; then
-        echo -e "   ${BLUE}[1/2]${NC} 📡 Conectando ao GitHub..."
-        if ! git clone https://github.com/malvesro/transcribe.git >/dev/null 2>&1; then
-            echo -e "\n${RED}❌ ERRO: Falha ao baixar o projeto!${NC}\n"
-            echo -e "${YELLOW}🔧 Possíveis soluções:${NC}"
-            echo -e "   1. Verifique sua conexão com a internet"
-            echo -e "   2. Tente novamente em alguns minutos\n"
-            exit 1
-        fi
-        echo -e "   ${GREEN}✅ Conectado ao GitHub!${NC}"
-        echo -e "   ${BLUE}[2/2]${NC} 📁 Entrando no diretório do projeto..."
-        cd transcribe
-        echo -e "   ${GREEN}✅ Projeto baixado com sucesso!${NC}"
-    else
-        echo -e "   ${BLUE}[1/3]${NC} ⚠️  Git não encontrado, instalando..."
-        if [[ "$OS" == *"Ubuntu"* ]] || [[ "$OS" == *"Debian"* ]]; then
-            sudo apt install -y git >/dev/null 2>&1
-        elif [[ "$OS" == *"CentOS"* ]] || [[ "$OS" == *"Red Hat"* ]] || [[ "$OS" == *"Fedora"* ]]; then
-            sudo yum install -y git >/dev/null 2>&1
-        elif [[ "$OS" == "macOS" ]]; then
-            if command_exists brew; then
-                brew install git >/dev/null 2>&1
-            else
-                echo -e "\n${RED}❌ ERRO: Não foi possível instalar git${NC}"
-                echo -e "${YELLOW}💡 Instale o Homebrew primeiro ou instale git manualmente${NC}"
-                exit 1
-            fi
-        fi
-        echo -e "   ${GREEN}✅ Git instalado!${NC}"
-        
-        echo -e "   ${BLUE}[2/3]${NC} 📡 Conectando ao GitHub..."
-        if ! git clone https://github.com/malvesro/transcribe.git >/dev/null 2>&1; then
-            echo -e "\n${RED}❌ ERRO: Falha ao baixar o projeto!${NC}\n"
-            exit 1
-        fi
-        echo -e "   ${GREEN}✅ Conectado ao GitHub!${NC}"
-        echo -e "   ${BLUE}[3/3]${NC} 📁 Entrando no diretório do projeto..."
-        cd transcribe
-        echo -e "   ${GREEN}✅ Projeto baixado com sucesso!${NC}"
-    fi
-    
-    echo -e "${GREEN}✅ Projeto baixado com sucesso!${NC}"
-}
-
 # Função para criar scripts de conveniência
 create_convenience_scripts() {
     echo -e "\n${BLUE}📝 Criando scripts de conveniência...${NC}"
@@ -452,8 +393,8 @@ else
     COMPOSE_CMD="docker-compose"
 fi
 
-echo "🎙️ Iniciando Whisper Transcriber..."
-sudo $COMPOSE_CMD up -d
+echo "🎙️ Iniciando e verificando atualizacoes do Whisper Transcriber..."
+sudo $COMPOSE_CMD up --build -d
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber iniciado com sucesso!"
@@ -524,11 +465,18 @@ EOF
 # Função principal
 main() {
     print_header
+
+    # Verificar se o script está no diretório correto
+    if [ ! -f "docker-compose.yml" ]; then
+        echo -e "${RED}❌ ERRO: Por favor, execute este script a partir do diretorio raiz do projeto.${NC}"
+        echo -e "${YELLOW}O diretorio deve conter o arquivo 'docker-compose.yml'.${NC}"
+        exit 1
+    fi
+
     detect_os
-    check_existing_installation  # Verificar se já existe instalação
+    check_existing_environment
     check_and_install_docker
     check_docker_compose
-    download_project
     create_directories
     setup_env_file
     start_services
