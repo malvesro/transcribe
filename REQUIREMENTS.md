@@ -23,38 +23,25 @@ O Whisper Transcriber é uma aplicação web containerizada que utiliza Docker p
 - **WebApp (Flask)**: Interface web e API
 - **Whisper Worker**: Processamento de transcrição com IA
 
-### Flexibilidade de Instalação
-- ✅ **Instalação Automática**: Scripts que configuram tudo automaticamente
-- ✅ **Instalação Manual**: Para desenvolvedores e usuários avançados
-- ✅ **Ambiente de Desenvolvimento**: Para contribuidores do projeto
-
 ## 🎭 Requisitos por Cenário de Uso
 
 ### 1. 👤 Usuário Final (Instalação Automática)
 
-**Cenário**: Pessoa que quer usar a ferramenta sem complicações técnicas.
+A forma recomendada de instalação é através dos nossos scripts automáticos. Eles cuidam de todas as dependências complexas para você.
 
-#### Requisitos Mínimos:
-- **Sistema**: Windows 10 2004+ ou Linux/macOS moderno
-- **RAM**: 4GB (8GB recomendado)
-- **Armazenamento**: 50GB livres (ver seção de "Armazenamento" para detalhes)
-- **Privilégios**: Administrador (apenas durante instalação)
-- **Internet**: Conexão estável para downloads
+**Requisitos Essenciais:**
+- **Sistema Operacional**: Windows 10 (2004+)/11 ou Linux/macOS recente.
+- **Memória RAM**: Mínimo de 8GB.
+- **Armazenamento**: Mínimo de 50GB de espaço livre.
+- **Privilégios**: Acesso de Administrador/sudo durante a instalação.
+- **Internet**: Conexão estável para baixar os componentes (~2-5GB).
 
-#### O que é Instalado Automaticamente:
-- Docker Engine
-- Docker Compose
-- Whisper Transcriber
-- Todas as dependências
-
-#### Comandos de Instalação:
-```bash
-# Windows (executar como Administrador)
-instalar-windows.bat
-
-# Linux/macOS
-bash setup.sh
-```
+**O que o Instalador Automático Faz por Você:**
+- No **Windows**, configura o ambiente WSL2, Ubuntu e Docker.
+- No **Linux/macOS**, instala o Docker e suas dependências.
+- Baixa o código da aplicação.
+- Constrói e inicia a aplicação.
+- Cria scripts de atalho para facilitar o uso (`start.bat`, `stop.bat`, etc.).
 
 ### 2. 🧑‍💻 Desenvolvedor (Instalação Manual)
 
@@ -104,19 +91,36 @@ FLASK_ENV=production
 SECRET_KEY=sua-chave-super-secreta-aqui
 ```
 
+### 4. 🏢 Usuário Corporativo (Sem Privilégios de Administrador)
+
+**Cenário**: Você está em um ambiente corporativo onde não tem permissões de administrador para instalar softwares.
+
+**Como proceder:**
+1.  **Peça ao seu TI**: A instalação das dependências principais (WSL2, Ubuntu, Docker) **deve** ser feita pelo seu departamento de TI ou por um usuário com privilégios de administrador.
+2.  **Use o script de verificação**: Após o TI preparar a máquina, execute o script `instalar-windows.bat`. Ele não tentará instalar nada, mas verificará se o ambiente está pronto e configurará o projeto para você.
+3.  **Instruções para o TI**: Você pode fornecer as seguintes instruções para o seu administrador de TI:
+    > "Para preparar meu computador para o Whisper Transcriber, por favor:
+    > 1.  Certifique-se de que a virtualização (Hyper-V) está habilitada na BIOS.
+    > 2.  Instale o WSL2 e a distribuição 'Ubuntu' da Microsoft Store.
+    > 3.  Dentro do Ubuntu, instale o Docker (`sudo apt-get install docker.io`) e o Docker Compose (`sudo apt-get install docker-compose`).
+    > 4.  Adicione meu usuário do Windows ao grupo 'docker' no Ubuntu (`sudo usermod -aG docker $USER`)."
+
 ## 💻 Requisitos de Sistema Operacional
 
 ### Windows
 
 #### Versões Suportadas:
 - ✅ **Windows 11** (todas as versões)
-- ✅ **Windows 10** versão 2004 (build 19041) ou superior
-- ❌ **Windows 8.1 e anteriores** (não suportados)
+- ✅ **Windows 10** (versão 2004, build 19041 ou superior)
+
+#### O que é WSL2 e por que é necessário?
+Para rodar a aplicação de forma segura e isolada, utilizamos o **Docker**. No Windows, a melhor forma de fazer isso é através do **WSL2 (Subsistema Windows para Linux)**.
+- O WSL2 é um **recurso oficial da Microsoft** que permite executar um ambiente Linux diretamente no Windows.
+- Nosso instalador automatiza a configuração do WSL2 e do Ubuntu (uma distribuição Linux popular) para criar o ambiente perfeito para a aplicação, sem interferir com o resto do seu sistema.
 
 #### Recursos Necessários:
-- **WSL2** (instalado automaticamente pelos scripts)
-- **Hyper-V** (habilitado automaticamente)
-- **Virtualização** habilitada na BIOS/UEFI
+- **Virtualização (Hyper-V)**: Precisa estar habilitada na BIOS/UEFI do seu computador. O script de instalação irá verificar isso para você.
+- **WSL2 e Ubuntu**: Serão instalados e configurados automaticamente pelo script `instalar-windows.bat`.
 
 #### Verificação de Compatibilidade:
 ```powershell
@@ -353,7 +357,8 @@ git config --list
 sudo ufw allow 5000/tcp
 
 # Windows Firewall
-# Configurado automaticamente pelo Docker Desktop
+# O instalador do WSL e Docker geralmente lida com as regras necessarias.
+# Se houver problemas, permita o acesso da porta 5000 para o WSL.
 ```
 
 ### Proxy/Firewall Corporativo

@@ -59,41 +59,38 @@ Este projeto possui documentação organizada por perfil de usuário e necessida
 
 ## 🚀 Início Rápido
 
-### Instalação Automática (Recomendada)
-```bash
-# Windows (executar como Administrador)
-instalar-windows.bat
+A forma mais fácil de começar é usando nossos scripts de instalação automática.
 
-# Linux/macOS
-bash setup.sh
-```
+1.  **Baixe o projeto**: Clique no botão verde "Code" no topo da página e depois em "Download ZIP". Extraia o conteúdo em uma pasta de sua preferência.
+2.  **Execute o instalador**:
+    *   **No Windows**: Clique com o botão direito no arquivo `instalar-windows.bat` e selecione "Executar como administrador".
+    *   **No Linux/macOS**: Abra um terminal, navegue até a pasta do projeto e execute `bash setup.sh`.
 
-**Recursos dos Instaladores:**
-- ✅ **Detecção inteligente** - Verifica componentes já instalados
-- ✅ **Feedback visual** - Barras de progresso e estimativas de tempo
-- ✅ **Atualização automática** - Atualiza projetos existentes
-- ✅ **Scripts de conveniência** - Cria `start-whisper.sh`, `stop-whisper.sh`, e `logs-whisper.sh` para facilitar o gerenciamento.
-
-### Instalação Manual
-```bash
-# 1. Clonar repositório
-git clone https://github.com/malvesro/transcribe.git
-cd transcribe
-
-# 2. Iniciar serviços
-docker compose up --build -d
-
-# 3. Acessar aplicação
-# http://localhost:5000
-```
+O instalador cuidará de todas as dependências (Docker, WSL, etc.) e configurará a aplicação.
 
 ## 💻 Como Usar
 
-1. **Acesse**: http://localhost:5000
-2. **Upload**: Selecione arquivo de áudio/vídeo
-3. **Modelo**: Escolha tamanho do modelo Whisper
-4. **Transcrever**: Acompanhe progresso em tempo real
-5. **Download**: Baixe resultados em TXT, SRT ou VTT
+Após a instalação, use os novos atalhos criados na pasta do projeto:
+
+*   **`start.bat`** (no Windows) ou `./start-whisper.sh` (no Linux/macOS): Inicia a aplicação.
+*   **`stop.bat`** (no Windows) ou `./stop-whisper.sh` (no Linux/macOS): Para a aplicação.
+*   **`open-files-folder.bat`** (apenas no Windows): Abre a pasta onde você deve colocar seus arquivos de áudio/vídeo.
+
+**Fluxo de Trabalho:**
+1.  Execute `start.bat` (ou `./start-whisper.sh`).
+2.  Acesse a aplicação em **http://localhost:5000** no seu navegador.
+3.  Use `open-files-folder.bat` (ou navegue manualmente para a pasta `transcriber_web_app/videos`) para adicionar seus arquivos.
+4.  Na interface web, selecione o arquivo, escolha o modelo e inicie a transcrição.
+5.  Acompanhe o progresso e faça o download dos resultados.
+
+## 🏗️ O que acontece durante a instalação? (Tecnologia)
+
+Para garantir que a aplicação funcione de forma isolada e segura, sem interferir com seu sistema, o instalador usa tecnologias de virtualização:
+
+*   **Docker**: Uma ferramenta que "empacota" a aplicação em um ambiente contido chamado *container*.
+*   **WSL2 (no Windows)**: O "Subsistema Windows para Linux" é um recurso oficial da Microsoft que permite ao Docker rodar de forma eficiente no Windows.
+
+O instalador automatiza a configuração de todas essas ferramentas para você.
 
 ## 🏗️ Arquitetura
 
@@ -141,33 +138,15 @@ flowchart LR
     W -- 8. Disponibiliza download --> U
 ```
 
-## ⚙️ Configuração
+## ⚙️ Configuração (Avançado)
 
-### Variáveis Principais (.env)
+O arquivo `.env` na pasta do projeto controla configurações como o tamanho máximo de upload. Para a maioria dos usuários, os valores padrão são suficientes.
+
 ```bash
-MAX_FILE_SIZE_GB=15          # Limite de arquivo
-FLASK_ENV=development        # Ambiente
-TRANSCRIPTION_TIMEOUT=3600   # Timeout (segundos)
-```
-
-### Comandos Úteis
-```bash
-# Scripts de conveniência (criados automaticamente)
-./start-whisper.sh           # Iniciar serviços
-./stop-whisper.sh            # Parar serviços  
-./logs-whisper.sh            # Ver logs em tempo real
-
-# Configuração
-python transcriber_web_app/manage_config.py show
-python transcriber_web_app/manage_config.py set-size --size 25
-
-# Testes
-python run_tests.py
-
-# Docker direto (alternativo)
-docker compose up -d         # Iniciar
-docker compose down          # Parar
-docker compose logs -f       # Logs
+# Exemplo de conteúdo do arquivo .env
+MAX_FILE_SIZE_GB=15
+FLASK_ENV=development
+TRANSCRIPTION_TIMEOUT=3600
 ```
 
 ## 🧪 Testes
