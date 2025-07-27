@@ -2,9 +2,19 @@
 # ============================================================================
 # 🎙️ Whisper Transcriber - Instalação Super Fácil para Linux/macOS
 # ============================================================================
-# Este script instala TUDO automaticamente - Docker nativo (sem Docker Desktop)
-# Muito mais simples e leve!
-# Versão: 3.0 - Docker nativo + Configuração automática
+# VERSÃO: 3.1 - Consolidada e Documentada
+#
+# FUNCIONALIDADES:
+# - Instalação automática do Docker e Docker Compose.
+# - Detecção do sistema operacional (Ubuntu, Debian, CentOS, Fedora, macOS).
+# - Verificação de instalações existentes e opção de atualização.
+# - Criação de scripts de conveniência (`start-whisper.sh`, `stop-whisper.sh`).
+# - Tratamento de erros e feedback visual para o usuário.
+#
+# REQUISITOS:
+# - Acesso `sudo` para instalar pacotes.
+# - Conexão com a internet.
+# - `git` para clonar o repositório (será instalado se não existir).
 # ============================================================================
 
 set -e  # Parar em caso de erro
@@ -443,7 +453,7 @@ else
 fi
 
 echo "🎙️ Iniciando Whisper Transcriber..."
-$COMPOSE_CMD up -d
+sudo $COMPOSE_CMD up -d
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber iniciado com sucesso!"
@@ -465,7 +475,7 @@ else
 fi
 
 echo "⏹️ Parando Whisper Transcriber..."
-$COMPOSE_CMD down
+sudo $COMPOSE_CMD down
 
 if [ $? -eq 0 ]; then
     echo "✅ Whisper Transcriber parado com sucesso!"

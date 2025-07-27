@@ -6,7 +6,7 @@
 - **Validação de arquivos**: Apenas extensões permitidas são aceitas
 - **Sanitização de nomes**: Uso de `secure_filename()` para prevenir path traversal
 - **Validação de UUID**: Job IDs são validados com regex rigoroso
-- **Limite de tamanho**: Arquivos limitados a 1GB
+- **Limite de tamanho**: Arquivos limitados a 15GB (configurável)
 
 ### 2. Prevenção de Path Traversal
 - Validação rigorosa de nomes de arquivo
@@ -69,17 +69,28 @@
 
 ## 🔍 Testes de Segurança
 
-Execute os testes de segurança regularmente:
+O projeto inclui um script automatizado para facilitar a execução de verificações de segurança.
 
+### Script Automatizado
+Para executar uma verificação completa, que inclui a auditoria de dependências e a análise estática do código, utilize:
 ```bash
-# Testes unitários incluindo segurança
-python -m pytest test_app.py::TestSecurity -v
+bash security_check.sh
+```
+Este script irá:
+1.  Verificar vulnerabilidades em pacotes Python com `pip-audit`.
+2.  Analisar o código em busca de falhas de segurança comuns com `bandit`.
+
+### Execução Manual
+Alternativamente, você pode executar os comandos manualmente:
+```bash
+# Testes unitários de segurança
+python -m pytest transcriber_web_app/test_app.py::TestSecurity -v
 
 # Verificação de dependências vulneráveis
-pip audit
+pip-audit
 
 # Análise estática de código
-bandit -r . -f json
+bandit -r transcriber_web_app/
 ```
 
 ## 📞 Reportar Vulnerabilidades
