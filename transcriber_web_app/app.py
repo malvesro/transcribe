@@ -199,17 +199,18 @@ def upload_and_transcribe():
         logger.warning(f"Tentativa de upload de tipo de arquivo não permitido: {file.filename}")
         return jsonify({"error": "Tipo de arquivo não permitido"}), 400
 
-@app.route('/status/<job_id>', methods=['GET'])
+@app.route('/status/<path:job_id>', methods=['GET'])
 def get_status(job_id):
-    # Validar job_id para prevenir path traversal
+    # Validar o formato do job_id primeiro para retornar 400 imediatamente
     if not re.match(r'^[a-f0-9-]{36}$', job_id):
-        logger.warning(f"Job ID inválido recebido: {job_id}")
-        return jsonify({"error": "Job ID inválido"}), 400
+        logger.warning(f"Tentativa de acesso com Job ID em formato inválido: {job_id}")
+        return jsonify({"error": "Formato de Job ID inválido"}), 400
     
     job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
 
-    if not os.path.exists(job_results_path_in_app):
-        logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não encontrado em '{job_results_path_in_app}'.")
+    # Agora, verifique se o diretório existe
+    if not os.path.isdir(job_results_path_in_app):
+        logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não encontrado ou não é um diretório válido em '{job_results_path_in_app}'.")
         return jsonify({"job_id": job_id, "status": "Não encontrado", "files": []}), 404
 
     output_files = []

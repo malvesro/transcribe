@@ -13,53 +13,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const monitoredJobs = new Set();
     const pollingIntervals = {};
-    
-    // Configurações da aplicação (carregadas dinamicamente)
-    let appConfig = {
-        max_file_size: '15GB',
-        max_file_size_bytes: 15 * 1024 * 1024 * 1024,
-        allowed_extensions: ['mp4', 'm4a', 'mp3', 'wav', 'mov', 'avi', 'flac', 'ogg', 'aac'],
-        poll_interval: 5000
-    };
-
-    // Carregar configurações da aplicação
-    async function loadAppConfig() {
-        try {
-            const response = await fetch('/config');
-            if (response.ok) {
-                appConfig = await response.json();
-                updateUIWithConfig();
-                console.log('Configurações carregadas:', appConfig);
-            }
-        } catch (error) {
-            console.warn('Erro ao carregar configurações, usando padrões:', error);
-        }
-    }
-
-    // Atualizar interface com as configurações
-    function updateUIWithConfig() {
-        // Atualizar texto do limite de arquivo
-        const fileSizeInfo = document.getElementById('fileSizeInfo');
-        if (fileSizeInfo) {
-            fileSizeInfo.textContent = `Limite máximo: ${appConfig.max_file_size}`;
-        }
-        
-        // Atualizar accept do input file
-        const extensionsForAccept = appConfig.allowed_extensions.map(ext => `.${ext}`).join(',');
-        videoFileIn.setAttribute('accept', extensionsForAccept);
-    }
-
-    // Validar tamanho do arquivo
-    function validateFileSize(file) {
-        if (file.size > appConfig.max_file_size_bytes) {
-            alert(`Arquivo muito grande! O limite máximo é ${appConfig.max_file_size}.\nTamanho do arquivo: ${(file.size / (1024 * 1024 * 1024)).toFixed(2)}GB`);
-            return false;
-        }
-        return true;
-    }
-
-    // Carregar configurações ao inicializar
-    loadAppConfig();
 
     // Exibir nome do arquivo selecionado
     videoFileIn.addEventListener('change', () => {
@@ -73,14 +26,9 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!videoFileIn.files || videoFileIn.files.length === 0) {
+            // Usar uma notificação toast no futuro aqui
             alert('Por favor, selecione um arquivo para transcrever.');
             return;
-        }
-
-        // Validar tamanho do arquivo
-        const selectedFile = videoFileIn.files[0];
-        if (!validateFileSize(selectedFile)) {
-            return; // Não prosseguir se o arquivo for muito grande
         }
 
         submitButton.disabled = true;
@@ -187,14 +135,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateJobStatusDisplay(jobId, statusText, files = [], data = {}) {
+    function updateJobStatusDisplay(jobId, statusText, files = [], data = {}) { // data = {} é o default
         const jobElement = document.getElementById(`job-${jobId}`);
-        if (!jobElement) {
-            console.warn(`Elemento job-${jobId} não encontrado no DOM`);
-            return;
-        }
+        if (!jobElement) return;
 
-        // Garante que data e data.progress existam antes de tentar acessá-los
+        // Garante que data e data.progress existam antes de tentar acessá-los profundamente
         const currentProgress = (data && data.progress) ? data.progress : { percentage: 0, status_text: statusText };
 
         const statusBadgeElement = jobElement.querySelector('.status-badge');
@@ -210,13 +155,11 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBadgeElement.textContent = statusText;
 
         // Atualizar barra de progresso da transcrição
-        const statusLower = statusText.toLowerCase();
-        if (statusLower === "processando" || statusLower === "iniciado") {
+        if ((statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado")) {
             transcriptionProgressContainer.style.display = 'block';
-            const percentage = Math.max(0, Math.min(100, currentProgress.percentage || 0));
-            transcriptionProgressBar.style.width = `${percentage}%`;
-            transcriptionProgressText.textContent = currentProgress.status_text || statusText;
-        } else if (statusLower === "concluído") {
+            transcriptionProgressBar.style.width = `${currentProgress.percentage}%`;
+            transcriptionProgressText.textContent = currentProgress.status_text || statusText; // Usa statusText principal se progress.status_text não existir
+        } else if (statusText.toLowerCase() === "concluído") {
             transcriptionProgressContainer.style.display = 'block';
             transcriptionProgressBar.style.width = '100%';
             transcriptionProgressText.textContent = "Concluído!";
@@ -293,19 +236,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function monitorJobStatus(jobId) {
-        console.log("monitorJobStatus chamado para job_id:", jobId);
+        console.log("monitorJobStatus chamado para job_id:", jobId); // DEBUG
+        console.log("monitoredJobs antes de adicionar:", Array.from(monitoredJobs)); // DEBUG
+        console.log("pollingIntervals[jobId] antes de setar:", pollingIntervals[jobId]); // DEBUG
 
         if (monitoredJobs.has(jobId) && pollingIntervals[jobId]) {
-            console.log("Polling para job_id:", jobId, "já ativo. Retornando.");
+            console.log("Polling para job_id:", jobId, "já ativo. Retornando."); // DEBUG
             return;
         }
         monitoredJobs.add(jobId);
 
         fetchJobStatus(jobId); // Chamada inicial
 
-        console.log("Configurando setInterval para job_id:", jobId);
+        console.log("Configurando setInterval para job_id:", jobId); // DEBUG
         pollingIntervals[jobId] = setInterval(() => {
             fetchJobStatus(jobId);
-        }, appConfig.poll_interval); // Usar intervalo configurável
+        }, 5000);
     }
 });
