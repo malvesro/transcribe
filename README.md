@@ -61,6 +61,15 @@ FLASK_ENV=development
 TRANSCRIPTION_TIMEOUT=3600
 ```
 
+## 🔧 Solução de Problemas (Troubleshooting)
+
+Se a aplicação não se comportar como esperado, especialmente após uma atualização, a primeira etapa é forçar uma reconstrução completa do ambiente. Para isso, execute o script correspondente ao seu sistema operacional:
+
+*   **Windows**: Execute o arquivo `force-rebuild.bat`.
+*   **Linux/macOS**: Execute o comando `./force-rebuild.sh`.
+
+Este script irá parar, remover e reconstruir todos os componentes da aplicação, garantindo que você esteja usando a versão mais recente e limpa.
+
 ## 🤝 Contribuição
 
 Para desenvolvedores, a documentação técnica sobre testes, segurança e arquitetura pode ser encontrada em:
