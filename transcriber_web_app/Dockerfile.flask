@@ -1,43 +1,38 @@
-# Base image
-FROM python:3.10-slim
+# Estágio 1: Build - Instalar dependências
+FROM python:3.10-slim as builder
 
-# Set working directory
+# Define o diretório de trabalho
 WORKDIR /app
 
-# Install system dependencies, Docker CLI
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-    build-essential \
-    apt-transport-https \
-    ca-certificates \
-    curl \
-    gnupg \
-    lsb-release && \
-    # Add Docker's official GPG key
-    mkdir -p /etc/apt/keyrings && \
-    curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg && \
-    # Set up the Docker stable repository
-    echo \
-      "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian \
-      $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null && \
-    # Install Docker CLI (docker-compose-plugin removido, pois usaremos a SDK Python)
-    apt-get update && \
-    apt-get install -y --no-install-recommends \
-    docker-ce-cli && \
-    # Clean up
-    rm -rf /var/lib/apt/lists/*
+# Instala dependências em um ambiente virtual para isolamento
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
 
-# Copy requirements first to leverage Docker cache
+# Copia apenas o arquivo de requisitos primeiro para aproveitar o cache do Docker
 COPY requirements.txt .
 
-# Install Python dependencies (incluindo a biblioteca 'docker')
+# Instala as dependências Python
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the application code
+# Estágio 2: Final - Criar a imagem de produção
+FROM python:3.10-slim
+
+# Define o diretório de trabalho
+WORKDIR /app
+
+# Copia o ambiente virtual com as dependências do estágio de build
+COPY --from=builder /opt/venv /opt/venv
+
+# Copia o resto do código da aplicação
 COPY . .
 
-# Expose port
+# Define o PATH para usar o ambiente virtual
+ENV PATH="/opt/venv/bin:$PATH"
+
+# Expõe a porta
 EXPOSE 5000
 
-# Command to run the application
+# Comando para rodar a aplicação
+# Usar gunicorn como um servidor WSGI mais robusto para produção é uma boa prática,
+# mas para manter a simplicidade, continuamos com o servidor de desenvolvimento do Flask.
 CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
