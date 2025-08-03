@@ -24,10 +24,12 @@ services:
       - transcriber_network
 
   whisper_worker:
-    image: transcriber-worker:1.1
+    image: transcriber-worker:1.2
     build:
       context: ./transcriber_web_app
       dockerfile: Dockerfile.whisper
+      tags:
+        - "transcriber-worker:1.2"
     volumes:
       - ./transcriber_web_app/videos:/data/videos:ro # :ro para read-only, já que o worker não deve modificar o vídeo original
       - ./transcriber_web_app/results:/data/results
