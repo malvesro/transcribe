@@ -1,46 +1,51 @@
-# Estágio 1: Imagem Base com CUDA
-# Usamos a imagem oficial da NVIDIA com CUDA 12.1.1 e cuDNN 8 no Ubuntu 22.04.
-# A tag 'devel' inclui compiladores e headers necessários para construir pacotes Python que dependem de CUDA.
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+# Estágio 1: Build - Usar a imagem 'devel' para compilar dependências
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS builder
 
-# Define o frontend do apt para não interativo, evitando prompts durante o build.
 ENV DEBIAN_FRONTEND=noninteractive
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 
-# Estágio 2: Instalação de Dependências do Sistema e Python
-# - Atualiza os pacotes e instala python3, pip e git.
-# - ffmpeg é CRÍTICO para o Whisper poder ler arquivos de áudio e vídeo como MP4.
-# - Instala o PyTorch com suporte para CUDA 12.1.
-# - Instala a última versão do openai-whisper.
-# - Limpa o cache do apt para reduzir o tamanho da imagem.
+# Instalar dependências do sistema e criar ambiente virtual
 RUN apt-get update && apt-get install -y \
     python3.10 \
-    python3-pip \
+    python3.10-venv \
     ffmpeg \
     git \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
-    && pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
-    && pip3 install --no-cache-dir -U openai-whisper
+    && python3.10 -m venv $VIRTUAL_ENV
 
-# ---------------------------------------------------------------------------------
-# NOVO: Estágio 3: Pré-carregar o Modelo Whisper
-# Executa um comando Python para baixar e cachear o modelo 'small' durante o build.
-# Isso evita a espera do download na primeira execução do contêiner.
-# O modelo será armazenado em /root/.cache/whisper/ dentro da imagem.
-RUN python3 -c "import whisper; print('Baixando e cacheando o modelo small...'); whisper.load_model('small'); print('Modelo small cacheado com sucesso.')"
-# ---------------------------------------------------------------------------------
+# Instalar dependências Python no ambiente virtual
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+RUN pip install --no-cache-dir -U openai-whisper
 
-# Estágio 4: Configuração do Ambiente da Aplicação
-# Copia o nosso script de transcrição para dentro da imagem.
+
+# Estágio 2: Final - Usar a imagem 'runtime', que é muito menor
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV VIRTUAL_ENV=/opt/venv
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+# Instalar apenas as dependências de runtime necessárias
+RUN apt-get update && apt-get install -y \
+    python3.10 \
+    ffmpeg \
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copiar o ambiente virtual com as dependências pré-instaladas do estágio de build
+COPY --from=builder $VIRTUAL_ENV $VIRTUAL_ENV
+
+# Copiar o script da aplicação
 WORKDIR /app
 COPY transcribe.py .
 
-# Define o diretório de trabalho padrão para a pasta de dados.
-# Isso torna a execução mais simples, pois estaremos no diretório montado.
+# Pré-carregar o modelo Whisper na imagem final para acelerar o primeiro uso
+RUN python3 -c "import whisper; print('Baixando e cacheando o modelo small...'); whisper.load_model('small'); print('Modelo small cacheado com sucesso.')"
+
+# Definir o diretório de trabalho padrão para a pasta de dados
 WORKDIR /data
 
-# Estágio 5: Comando Padrão para Manter o Container Rodando
-# Removemos o ENTRYPOINT que executa transcribe.py diretamente.
-# Em vez disso, usamos um CMD que mantém o container ativo,
-# permitindo que `docker compose exec` chame o script transcribe.py conforme necessário.
+# Comando para manter o container ativo, aguardando comandos
 CMD ["tail", "-f", "/dev/null"]
