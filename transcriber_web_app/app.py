@@ -123,26 +123,33 @@ def upload_and_transcribe():
         filename = secure_filename(file.filename)
         job_id = str(uuid.uuid4())
 
+        # Salvar o arquivo original
         original_filepath_in_app = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
         try:
             file.save(original_filepath_in_app)
-            logger.info(f"Arquivo '{filename}' salvo em '{original_filepath_in_app}' para o job {job_id}.")
         except Exception as e:
             logger.error(f"Erro ao salvar o arquivo '{filename}' para o job {job_id}: {e}", exc_info=True)
             return jsonify({"error": f"Erro ao salvar arquivo: {str(e)}"}), 500
 
+        # Criar diretório de resultados para o job
         job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
         os.makedirs(job_results_path_in_app, exist_ok=True)
 
-        video_path_in_worker = os.path.join(app.config['WORKER_VIDEOS_FOLDER'], filename)
-        output_dir_in_worker = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id)
+        # Copiar o arquivo para o diretório de resultados para que o transcribe.py salve os resultados lá
+        filepath_in_job_dir = os.path.join(job_results_path_in_app, filename)
+        import shutil
+        shutil.copy(original_filepath_in_app, filepath_in_job_dir)
 
+        logger.info(f"Arquivo '{filename}' salvo em '{filepath_in_job_dir}' para o job {job_id}.")
+
+        # O caminho do vídeo que o worker irá usar
+        video_path_in_worker = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id, filename)
+
+        # Comando para o worker, sem --output_dir
         transcribe_command = [
             "python3", "/app/transcribe.py",
             "--video", video_path_in_worker,
-            "--model", model_size,
-            "--output_dir", output_dir_in_worker
+            "--model", model_size
         ]
 
         cmd_string_for_log = ' '.join(transcribe_command)
