@@ -70,13 +70,13 @@ def favicon():
 def run_transcription_in_thread(job_id, worker_container_name, transcribe_command_list):
     """
     Executa o comando de transcrição em uma thread separada.
-    Loga stdout, stderr e o código de saída do processo worker.
+    Loga stdout, stderr e o código de saída do processo.
     """
     try:
         client = docker.from_env()
         worker_container = client.containers.get(worker_container_name)
 
-        logger.info(f"THREAD JOB_ID: {job_id} - Iniciando execução de exec_run no worker '{worker_container_name}'...")
+        logger.info(f"THREAD JOB_ID: {job_id} - Iniciando execução de exec_run no container '{worker_container_name}'...")
 
         exec_result = worker_container.exec_run(
             transcribe_command_list,
@@ -90,17 +90,17 @@ def run_transcription_in_thread(job_id, worker_container_name, transcribe_comman
         stdout = stdout_bytes.decode('utf-8', errors='replace') if stdout_bytes else ""
         stderr = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else ""
 
-        logger.info(f"THREAD JOB_ID: {job_id} - Comando exec_run finalizado no worker '{worker_container_name}'.")
-        logger.info(f"THREAD JOB_ID: {job_id} - Return Code do worker: {exit_code}")
+        logger.info(f"THREAD JOB_ID: {job_id} - Comando exec_run finalizado no container '{worker_container_name}'.")
+        logger.info(f"THREAD JOB_ID: {job_id} - Return Code: {exit_code}")
         if stdout:
-            logger.info(f"THREAD JOB_ID: {job_id} - STDOUT do worker:\n{stdout}")
+            logger.info(f"THREAD JOB_ID: {job_id} - STDOUT:\n{stdout}")
         if stderr:
-            logger.error(f"THREAD JOB_ID: {job_id} - STDERR do worker:\n{stderr}")
+            logger.error(f"THREAD JOB_ID: {job_id} - STDERR:\n{stderr}")
 
         if exit_code != 0:
-            logger.error(f"THREAD JOB_ID: {job_id} - Comando no worker falhou.")
+            logger.error(f"THREAD JOB_ID: {job_id} - Comando falhou.")
         else:
-            logger.info(f"THREAD JOB_ID: {job_id} - Comando executado com sucesso pelo worker.")
+            logger.info(f"THREAD JOB_ID: {job_id} - Comando executado com sucesso.")
 
     except Exception as e:
         logger.error(f"THREAD JOB_ID: {job_id} - Erro na thread de transcrição: {e}", exc_info=True)
@@ -123,43 +123,36 @@ def upload_and_transcribe():
         filename = secure_filename(file.filename)
         job_id = str(uuid.uuid4())
 
-        # Salvar o arquivo original
         original_filepath_in_app = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+
         try:
             file.save(original_filepath_in_app)
+            logger.info(f"Arquivo '{filename}' salvo em '{original_filepath_in_app}' para o job {job_id}.")
         except Exception as e:
             logger.error(f"Erro ao salvar o arquivo '{filename}' para o job {job_id}: {e}", exc_info=True)
             return jsonify({"error": f"Erro ao salvar arquivo: {str(e)}"}), 500
 
-        # Criar diretório de resultados para o job
         job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
         os.makedirs(job_results_path_in_app, exist_ok=True)
 
-        # Copiar o arquivo para o diretório de resultados para que o transcribe.py salve os resultados lá
-        filepath_in_job_dir = os.path.join(job_results_path_in_app, filename)
-        import shutil
-        shutil.copy(original_filepath_in_app, filepath_in_job_dir)
+        video_path_in_container = os.path.join(app.config['WORKER_VIDEOS_FOLDER'], filename)
+        output_dir_in_container = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id)
 
-        logger.info(f"Arquivo '{filename}' salvo em '{filepath_in_job_dir}' para o job {job_id}.")
-
-        # O caminho do vídeo que o worker irá usar
-        video_path_in_worker = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id, filename)
-
-        # Comando para o worker, sem --output_dir
         transcribe_command = [
             "python3", "/app/transcribe.py",
-            "--video", video_path_in_worker,
-            "--model", model_size
+            "--video", video_path_in_container,
+            "--model", model_size,
+            "--output_dir", output_dir_in_container
         ]
 
         cmd_string_for_log = ' '.join(transcribe_command)
-        logger.info(f"JOB_ID: {job_id} - Comando a ser executado no worker: {cmd_string_for_log}")
+        logger.info(f"JOB_ID: {job_id} - Comando a ser executado no container: {cmd_string_for_log}")
 
         try:
             client = docker.from_env()
             
             if not app.config['COMPOSE_PROJECT_NAME']:
-                logger.error(f"JOB_ID: {job_id} - COMPOSE_PROJECT_NAME não está definido. Não é possível encontrar o worker por label.")
+                logger.error(f"JOB_ID: {job_id} - COMPOSE_PROJECT_NAME não está definido. Não é possível encontrar o container por label.")
                 return jsonify({"error": "Configuração do servidor incompleta: nome do projeto Docker não definido."}), 500
 
             filters = {
@@ -171,15 +164,15 @@ def upload_and_transcribe():
             worker_containers = client.containers.list(all=True, filters=filters)
 
             if not worker_containers:
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' para o projeto '{app.config['COMPOSE_PROJECT_NAME']}' não encontrado.")
-                return jsonify({"error": f"Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' não encontrado."}), 500
+                logger.error(f"JOB_ID: {job_id} - Container '{app.config['WHISPER_WORKER_SERVICE_NAME']}' para o projeto '{app.config['COMPOSE_PROJECT_NAME']}' não encontrado.")
+                return jsonify({"error": f"Container '{app.config['WHISPER_WORKER_SERVICE_NAME']}' não encontrado."}), 500
 
             worker_container_obj = worker_containers[0]
             if worker_container_obj.status != "running":
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{worker_container_obj.name}' encontrado, mas não está em execução. Status: {worker_container_obj.status}")
-                return jsonify({"error": f"Container do worker '{worker_container_obj.name}' não está em execução (status: {worker_container_obj.status})."}), 500
+                logger.error(f"JOB_ID: {job_id} - Container '{worker_container_obj.name}' encontrado, mas não está em execução. Status: {worker_container_obj.status}")
+                return jsonify({"error": f"Container '{worker_container_obj.name}' não está em execução (status: {worker_container_obj.status})."}), 500
 
-            logger.info(f"JOB_ID: {job_id} - Iniciando thread para executar comando no container worker '{worker_container_obj.name}'...")
+            logger.info(f"JOB_ID: {job_id} - Iniciando thread para executar comando no container '{worker_container_obj.name}'...")
 
             # Executar em uma thread para não bloquear a requisição Flask
             thread = threading.Thread(target=run_transcription_in_thread, args=(job_id, worker_container_obj.name, transcribe_command))
@@ -194,8 +187,8 @@ def upload_and_transcribe():
             }), 202
 
         except docker.errors.NotFound:
-            logger.error(f"JOB_ID: {job_id} - Container do worker não encontrado via API Docker.", exc_info=True)
-            return jsonify({"error": "Container do worker não encontrado."}), 500
+            logger.error(f"JOB_ID: {job_id} - Container não encontrado via API Docker.", exc_info=True)
+            return jsonify({"error": "Container não encontrado."}), 500
         except docker.errors.APIError as e_api:
             logger.error(f"JOB_ID: {job_id} - Erro na API Docker: {e_api}", exc_info=True)
             return jsonify({"error": f"Erro na API Docker: {str(e_api)}"}), 500
