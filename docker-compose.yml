@@ -35,18 +35,18 @@ services:
       - ./transcriber_web_app/results:/data/results
       - whisper_models:/root/.cache/whisper # Volume nomeado para cache de modelos Whisper
       # Para GPU (NVIDIA):
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all # ou o número de GPUs que deseja alocar
-              capabilities: [gpu]
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all # ou o número de GPUs que deseja alocar
+    #           capabilities: [gpu]
     # Se não estiver usando deploy (ex: Swarm), a configuração de GPU para Compose v2+ pode ser:
     # runtime: nvidia # Se nvidia-container-runtime estiver configurado como padrão no Docker daemon
-    # environment:
-    #   - NVIDIA_VISIBLE_DEVICES=all # Ou IDs específicos de GPU
-    #   - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all # Ou IDs específicos de GPU
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
     networks:
       - transcriber_network
 
