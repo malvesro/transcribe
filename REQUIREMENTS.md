@@ -216,8 +216,8 @@ uname -m
 #### NVIDIA (Recomendado):
 - **Arquitetura**: Pascal (GTX 10xx) ou superior
 - **VRAM**: 4GB+ (8GB+ recomendado)
-- **CUDA**: 11.8+ (12.1+ ideal)
-- **Drivers**: 470.57.02+ (Linux), 472.47+ (Windows)
+- **Drivers (Linux/macOS)**: Drivers NVIDIA atualizados e NVIDIA Container Toolkit.
+- **Drivers (Windows com WSL2)**: Basta ter o driver NVIDIA mais recente (Game Ready ou Studio) instalado no **Windows**. Não é necessário instalar drivers dentro do ambiente Ubuntu/WSL.
 
 #### Modelos Testados:
 - ✅ **RTX 4090** (24GB VRAM) - Excelente
