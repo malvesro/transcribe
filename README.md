@@ -17,12 +17,11 @@ Solução web para **transcrição de áudio e vídeo** usando o modelo **Whispe
 
 ## 🚀 Início Rápido
 
-A forma mais fácil de começar é usando nossos scripts de instalação automática.
-
-1.  **Baixe o projeto**: Clique no botão verde "Code" no topo da página e depois em "Download ZIP". Extraia o conteúdo em uma pasta de sua preferência.
-2.  **Execute o instalador**:
-    *   **No Windows**: Clique com o botão direito no arquivo `instalar-windows.bat` e selecione "Executar como administrador".
-    *   **No Linux/macOS**: Abra um terminal, navegue até a pasta do projeto e execute `bash setup.sh`.
+1.  **Baixe o Projeto**: No topo desta página, clique no botão verde `<> Code` e selecione `Download ZIP`.
+2.  **Extraia o Arquivo**: Extraia o conteúdo do arquivo ZIP para uma pasta em seu computador.
+3.  **Execute o Instalador**:
+    *   **No Windows**: Entre na pasta extraída, clique com o botão direito no arquivo `instalar-windows.bat` e selecione "Executar como administrador".
+    *   **No Linux/macOS**: Abra um terminal, navegue até a pasta extraída e execute o comando `bash setup.sh`.
 
 O instalador cuidará de todas as dependências (Docker, WSL, etc.) e configurará a aplicação. Para mais detalhes sobre os requisitos, leia o arquivo **[REQUIREMENTS.md](REQUIREMENTS.md)**.
 

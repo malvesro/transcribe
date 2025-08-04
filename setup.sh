@@ -2,18 +2,7 @@
 # ============================================================================
 # 🎙️ Whisper Transcriber - Instalação Super Fácil para Linux/macOS
 # ============================================================================
-# VERSÃO: 3.2 - Corrigida e Final
-#
-# FUNCIONALIDADES:
-# - Instalação automática do Docker e Docker Compose.
-# - Detecção do sistema operacional (Ubuntu, Debian, CentOS, Fedora, macOS).
-# - Verificação de instalações existentes e opção de atualização.
-# - Criação de scripts de conveniência (`start-whisper.sh`, `stop-whisper.sh`).
-# - Tratamento de erros e feedback visual para o usuário.
-#
-# REQUISITOS:
-# - Acesso `sudo` para instalar pacotes.
-# - Conexão com a internet.
+# VERSÃO: 3.4 - Sem dependência do Git
 # ============================================================================
 
 set -e  # Parar em caso de erro
@@ -32,7 +21,7 @@ print_header() {
     echo -e "${CYAN}                🎙️ Whisper Transcriber - Instalador Super Fácil${NC}"
     echo -e "${CYAN}████████████████████████████████████████████████████████████████████████████${NC}\n"
     echo -e "${GREEN}✨ Este instalador fará TUDO automaticamente para você!${NC}"
-    echo -e "${BLUE}📋 Não precisa instalar nada manualmente - deixe conosco!${NC}\n"
+    echo -e "${BLUE}📋 Assumindo que você está executando da pasta do projeto baixado.${NC}\n"
 }
 
 # Função para verificar se comando existe
@@ -46,7 +35,6 @@ detect_os() {
         if [ -f /etc/os-release ]; then
             . /etc/os-release
             OS=$NAME
-            VER=$VERSION_ID
         else
             OS="Linux"
         fi
@@ -66,19 +54,6 @@ install_docker_ubuntu() {
     echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
     sudo apt-get update -y
     sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-    sudo systemctl enable docker
-    sudo systemctl start docker
-    sudo usermod -aG docker $USER
-    echo -e "${GREEN}✅ Docker instalado com sucesso!${NC}"
-    echo -e "${YELLOW}⚠️  Para usar o Docker sem 'sudo', você precisa fazer logout e login novamente.${NC}"
-}
-
-# Função para instalar Docker no CentOS/RHEL/Fedora
-install_docker_centos() {
-    echo -e "${BLUE}🔧 Instalando Docker no CentOS/RHEL/Fedora...${NC}"
-    sudo yum install -y yum-utils
-    sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-    sudo yum install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
     sudo systemctl enable docker
     sudo systemctl start docker
     sudo usermod -aG docker $USER
@@ -110,7 +85,6 @@ check_and_install_docker() {
     detect_os
     case "$OS" in
         *"Ubuntu"*|*"Debian"*) install_docker_ubuntu ;;
-        *"CentOS"*|*"Red Hat"*|*"Fedora"*) install_docker_centos ;;
         "macOS") install_docker_macos ;;
         *)
             echo -e "${RED}❌ ERRO: Sistema operacional não suportado para instalação automática: $OS${NC}"
@@ -134,49 +108,6 @@ check_docker_compose() {
     fi
 }
 
-# Função para criar scripts de conveniência
-create_convenience_scripts() {
-    echo -e "\n${BLUE}📝 Criando scripts de conveniência...${NC}"
-    
-    # Script para iniciar
-    cat > start-whisper.sh << EOF
-#!/bin/bash
-cd "\$(dirname "\$0")"
-echo "🎙️ Iniciando e verificando atualizações do Whisper Transcriber..."
-sudo $COMPOSE_CMD up --build -d
-if [ \$? -eq 0 ]; then
-    echo "✅ Whisper Transcriber iniciado com sucesso!"
-    echo "🌐 Acesse: http://localhost:5000"
-else
-    echo "❌ Erro ao iniciar Whisper Transcriber"
-fi
-EOF
-
-    # Script para parar
-    cat > stop-whisper.sh << EOF
-#!/bin/bash
-cd "\$(dirname "\$0")"
-echo "⏹️ Parando Whisper Transcriber..."
-sudo $COMPOSE_CMD down
-if [ \$? -eq 0 ]; then
-    echo "✅ Whisper Transcriber parado com sucesso!"
-else
-    echo "❌ Erro ao parar Whisper Transcriber"
-fi
-EOF
-
-    # Script para ver logs
-    cat > logs-whisper.sh << EOF
-#!/bin/bash
-cd "\$(dirname "\$0")"
-echo "📜 Mostrando logs do Whisper Transcriber (Pressione Ctrl+C para sair)..."
-sudo $COMPOSE_CMD logs -f
-EOF
-
-    chmod +x start-whisper.sh stop-whisper.sh logs-whisper.sh
-    echo -e "${GREEN}✅ Scripts 'start-whisper.sh', 'stop-whisper.sh', e 'logs-whisper.sh' criados.${NC}"
-}
-
 # Função principal
 main() {
     print_header
@@ -198,17 +129,16 @@ main() {
         echo "COMPOSE_PROJECT_NAME=transcribe" >> .env
     fi
 
-    create_convenience_scripts
-
-    echo -e "\n${BLUE}🏗️  Construindo e iniciando os serviços pela primeira vez...${NC}"
+    echo -e "\n${BLUE}🏗️  Construindo e iniciando os serviços...${NC}"
     echo -e "${YELLOW}⏳ Isso pode levar vários minutos...${NC}"
 
+    # Usa sudo para garantir permissão, pois o usuário pode não ter reiniciado a sessão
     sudo $COMPOSE_CMD up --build -d
 
     echo -e "\n\n${CYAN}                           ✅ INSTALAÇÃO CONCLUÍDA!${NC}"
     echo -e "${GREEN}🎉 O Whisper Transcriber está funcionando!${NC}\n"
     echo -e "${BLUE}🌐 Acesse: http://localhost:5000${NC}"
-    echo -e "${BLUE}🔧 Para gerenciar, use os scripts: ./start-whisper.sh, ./stop-whisper.sh, ./logs-whisper.sh${NC}"
+    echo -e "${BLUE}🔧 Para gerenciar, use os scripts: ./start-whisper.sh, ./stop-whisper.sh${NC}"
 }
 
 # Executar função principal

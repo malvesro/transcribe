@@ -5,25 +5,17 @@ setlocal enabledelayedexpansion
 :: ============================================================================
 :: 🎙️ Whisper Transcriber - Instalador Inteligente para Windows
 :: ============================================================================
-:: VERSÃO: 3.2 - Corrigida e Final
-::
-:: FUNCIONALIDADES:
-:: - Lida com usuários Admin e Não-Admin.
-:: - Se Admin: Instala tudo (WSL, Docker, etc.).
-:: - Se Não-Admin: Verifica o ambiente e guia o usuário.
-:: - Detecta e usa Docker Desktop se disponível.
-:: - Cria atalhos `.bat` para facilitar o uso.
+:: VERSÃO: 3.4 - Sem dependência do Git
 :: ============================================================================
 
 :: --- Configurações ---
 set "PROJECT_NAME=Whisper Transcriber"
-set "REPO_URL=https://github.com/malvesro/transcribe.git"
 set "LOG_FILE=%~dp0install.log"
 set "IS_ADMIN=0"
 
 :: --- Limpa o log antigo ---
 del "%LOG_FILE%" >nul 2>&1
-call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
+call :log_info "Iniciando %PROJECT_NAME% Instalador v3.4"
 
 :: ============================================================================
 :: LÓGICA PRINCIPAL
@@ -34,23 +26,17 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     echo.
     echo Bem-vindo ao instalador do %PROJECT_NAME%!
     echo.
+    echo Este script deve ser executado da pasta extraida do ZIP baixado.
 
-    :: Verificar se está executando como administrador
     net session >nul 2>&1
     if not errorlevel 1 set "IS_ADMIN=1"
 
     if %IS_ADMIN% equ 1 (
-        echo ✅ Voce esta executando como Administrador. O script podera instalar
-        echo    componentes do sistema, se necessario.
-        echo.
+        echo ✅ Voce esta executando como Administrador.
         pause
         call :admin_flow
     ) else (
         echo ⚠️  Voce NAO esta executando como Administrador.
-        echo.
-        echo    O script tentara usar uma instalacao existente do Docker ou WSL,
-        echo    mas nao podera instalar ou corrigir componentes do sistema.
-        echo.
         pause
         call :non_admin_flow
     )
@@ -62,41 +48,26 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     )
 
 :: ============================================================================
-:: FLUXO PARA ADMINISTRADORES
+:: FLUXOS PRINCIPAIS
 :: ============================================================================
 
 :admin_flow
     call :log_info "Iniciando fluxo de Administrador"
 
-    :: 1. Verificar se o projeto já existe
-    if exist "docker-compose.yml" (
-        echo ✅ Projeto ja existe. Tentando atualizar e reiniciar...
-        call :update_existing
-        exit /b 0
+    if not exist "docker-compose.yml" (
+        call :log_error "Arquivo 'docker-compose.yml' nao encontrado."
+        echo ❌ ERRO: Execute este script de dentro da pasta do projeto.
+        exit /b 1
     )
 
-    :: 2. Tentar baixar o projeto primeiro
-    if not exist "transcribe" (
-        echo 📥 Baixando projeto do GitHub...
-        git clone %REPO_URL% transcribe >nul 2>&1
-        if errorlevel 1 (
-            call :log_error "Falha ao clonar o repositorio. Git nao instalado ou problema de rede."
-            echo ❌ ERRO: Falha ao baixar o projeto. Verifique se o Git esta instalado.
-            exit /b 1
-        )
-    )
-    cd transcribe
-
-    :: 3. Detectar método de instalação
     docker info >nul 2>&1
     if not errorlevel 1 (
-        echo ✅ Docker Desktop detectado. Prosseguindo com a configuracao...
+        echo ✅ Docker Desktop detectado.
         call :setup_project
         exit /b %errorlevel%
     )
 
-    echo ⚠️  Docker Desktop nao detectado. Tentando configurar o ambiente com WSL2...
-    echo    Isto e mais complexo e pode exigir reinicializacoes.
+    echo ⚠️  Docker Desktop nao detectado. Configurando com WSL2...
     pause
 
     call :setup_wsl_and_docker
@@ -105,22 +76,14 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     call :setup_project
     exit /b %errorlevel%
 
-:: ============================================================================
-:: FLUXO PARA NÃO-ADMINISTRADORES
-:: ============================================================================
-
 :non_admin_flow
     call :log_info "Iniciando fluxo de Nao-Administrador"
 
-    :: 1. Verificar se o projeto já existe
     if not exist "docker-compose.yml" (
-        echo ❌ ERRO: O projeto ainda nao foi baixado.
-        echo    Peca a um administrador para executar este script primeiro para
-        echo    baixar e configurar o projeto.
+        echo ❌ ERRO: Execute este script de dentro da pasta do projeto.
         exit /b 1
     )
 
-    :: 2. Verificar se o ambiente está pronto
     docker info >nul 2>&1
     if not errorlevel 1 (
         echo ✅ Docker Desktop esta pronto.
@@ -136,50 +99,35 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     )
 
     call :log_error "Ambiente Docker nao funcional para usuario nao-admin."
-    echo ❌ ERRO: Nao foi encontrado um ambiente Docker funcional.
-    echo    Peca ao seu administrador de TI para instalar e configurar o
-    echo    Docker Desktop ou o WSL com Docker e garantir que seu usuario
-    echo    tenha permissao para usa-lo.
+    echo ❌ ERRO: Ambiente Docker nao funcional.
+    echo    Peca ao seu administrador de TI para configurar o Docker.
     exit /b 1
 
 :: ============================================================================
-:: SUB-ROTINAS DE CONFIGURAÇÃO
+:: SUB-ROTINAS
 :: ============================================================================
 
 :setup_wsl_and_docker
-    call :log_info "Iniciando setup do WSL e Docker"
-    echo.
-    echo --- CONFIGURANDO AMBIENTE WSL E DOCKER ---
-
-    :: Verificar virtualização
+    call :log_info "Setup WSL e Docker"
     systeminfo | find "Hyper-V" | find "Sim" >nul
     if errorlevel 1 (
-        call :log_error "Virtualizacao (Hyper-V) nao esta habilitada."
-        echo ❌ ERRO: A virtualizacao de hardware (Hyper-V) nao esta ativada na BIOS/UEFI.
-        echo    Ative-a na BIOS e tente novamente.
+        echo ❌ ERRO: A virtualizacao (Hyper-V) nao esta ativada na BIOS.
         exit /b 1
     )
-    echo ✅ Virtualizacao ativada.
 
-    :: Instalar WSL
     wsl --status >nul 2>&1
     if errorlevel 1 (
-        echo 📦 Instalando WSL2...
+        echo 📦 Instalando WSL2 e Ubuntu...
         wsl --install -d Ubuntu --no-launch
         if errorlevel 1 (
-            call :log_error "Falha ao instalar WSL/Ubuntu."
             echo ❌ ERRO: Falha ao instalar o WSL/Ubuntu.
             exit /b 1
         )
-        echo.
-        echo ❗ ACAO NECESSARIA - CRIE SEU USUARIO LINUX ❗
-        echo    Uma janela do Ubuntu ira abrir. Crie seu usuario e senha nela.
-        echo    Apos criar, feche a janela do Ubuntu e pressione uma tecla aqui.
+        echo ❗ ACAO NECESSARIA: Uma janela do Ubuntu ira abrir. Crie seu usuario e senha nela, depois feche-a e pressione uma tecla aqui.
         pause
         start "Ubuntu Setup" wsl -d Ubuntu
     )
 
-    :: Instalar Docker no WSL
     wsl -d Ubuntu -- docker --version >nul 2>&1
     if errorlevel 1 (
         echo 📦 Instalando Docker dentro do Ubuntu...
@@ -190,93 +138,77 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     echo ✅ Ambiente WSL e Docker configurado.
     goto :eof
 
-:update_existing
-    call :log_info "Atualizando projeto existente"
-    if exist ".git" (
-        echo 📥 Atualizando codigo via git...
-        git pull
-    )
-    echo 🚀 Reiniciando a aplicacao com as novas alteracoes...
-    call :setup_project
-    goto :eof
-
 :setup_project
-    call :log_info "Configurando o projeto (diretorios, .env, atalhos)"
-    echo.
-    echo --- CONFIGURANDO PROJETO ---
-
-    :: Criar diretórios e .env
+    call :log_info "Configurando projeto"
     mkdir "transcriber_web_app\videos" 2>nul
     mkdir "transcriber_web_app\results" 2>nul
     if not exist ".env" (
-        echo MAX_FILE_SIZE_GB=15 > .env
-        echo FLASK_ENV=development >> .env
-        echo COMPOSE_PROJECT_NAME=transcribe >> .env
+        (
+            echo MAX_FILE_SIZE_GB=15
+            echo FLASK_ENV=development
+            echo COMPOSE_PROJECT_NAME=transcribe
+        ) > ".env"
     )
-
-    :: Criar atalhos
     call :create_shortcut_scripts
-
-    :: Iniciar serviços
     echo 🚀 Iniciando a aplicacao...
     call start.bat
     goto :eof
 
 :create_shortcut_scripts
-    call :log_info "Criando scripts de atalho"
-
-    :: Detectar se a instalação foi via WSL ou Docker Desktop
+    call :log_info "Criando atalhos"
     docker info >nul 2>&1
-    if not errorlevel 1 ( set "DOCKER_TYPE=desktop" ) else ( set "DOCKER_TYPE=wsl" )
-
-    if "%DOCKER_TYPE%"=="wsl" (
-        (
-            echo @echo off
-            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && sudo docker-compose up --build -d"
-        ) > "start.bat"
-        (
-            echo @echo off
-            echo wsl -d Ubuntu -- bash -c "cd ~/transcribe && sudo docker-compose down"
-        ) > "stop.bat"
-        (
-            echo @echo off
-            echo wsl -d Ubuntu -- explorer.exe ~/transcribe/transcriber_web_app/videos
-        ) > "open-files-folder.bat"
-    ) else (
-        (
-            echo @echo off
-            echo docker compose up --build -d
-        ) > "start.bat"
-        (
-            echo @echo off
-            echo docker compose down
-        ) > "stop.bat"
-        (
-            echo @echo off
-            echo explorer.exe .\\transcriber_web_app\\videos
-        ) > "open-files-folder.bat"
+    if not errorlevel 1 (
+        set "DOCKER_TYPE=desktop"
+        goto :create_desktop_shortcuts
     )
+    set "DOCKER_TYPE=wsl"
+    goto :create_wsl_shortcuts
+
+:create_desktop_shortcuts
+    (
+        echo @echo off
+        echo docker compose up --build -d
+    ) > "start.bat"
+    (
+        echo @echo off
+        echo docker compose down
+    ) > "stop.bat"
+    (
+        echo @echo off
+        echo explorer.exe .\\transcriber_web_app\\videos
+    ) > "open-files-folder.bat"
+    goto :eof
+
+:create_wsl_shortcuts
+    (
+        echo @echo off
+        echo wsl -d Ubuntu -- bash -c "cd %CD% && sudo docker-compose up --build -d"
+    ) > "start.bat"
+    (
+        echo @echo off
+        echo wsl -d Ubuntu -- bash -c "cd %CD% && sudo docker-compose down"
+    ) > "stop.bat"
+    (
+        echo @echo off
+        echo wsl -d Ubuntu -- explorer.exe %CD%\\transcriber_web_app\\videos
+    ) > "open-files-folder.bat"
     goto :eof
 
 :: ============================================================================
-:: TELAS DE SAÍDA
+:: SAÍDA
 :: ============================================================================
 
 :end_success
-    call :log_info "Instalacao/configuracao concluida com sucesso."
-    call :display_header
+    call :log_info "Instalacao concluida."
     echo.
     echo ✅ CONCLUIDO COM SUCESSO!
-    echo.
-    echo Para gerenciar a aplicacao, use os scripts .bat criados nesta pasta.
-    echo.
     goto :end
 
 :end_error
-    call :log_error "A instalacao falhou."
+    call :log_error "Instalacao falhou."
     echo.
     echo ❌ A INSTALACAO FALHOU.
-    echo    Um log de erros foi salvo em: %LOG_FILE%
+    echo    Log salvo em: %LOG_FILE%
     goto :end
 
 :end
