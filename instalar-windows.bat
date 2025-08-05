@@ -108,26 +108,62 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.4"
 :: ============================================================================
 
 :setup_wsl_and_docker
-    call :log_info "Setup WSL e Docker"
-    systeminfo | find "Hyper-V" | find "Sim" >nul
+    call :log_info "Iniciando setup do WSL e Docker"
+    echo.
+    echo --- CONFIGURANDO AMBIENTE WSL E DOCKER ---
+
+    :: Verificação de virtualização robusta
+    echo Verificando se a virtualizacao esta ativada...
+    systeminfo | find "Hipervisor detectado" >nul
     if errorlevel 1 (
-        echo ❌ ERRO: A virtualizacao (Hyper-V) nao esta ativada na BIOS.
+        call :log_error "Virtualizacao nao detectada."
+        echo ❌ ERRO: A virtualizacao de hardware nao esta ativada na sua maquina.
+        echo    Por favor, ative-a na BIOS/UEFI e tente novamente.
         exit /b 1
     )
+    echo ✅ Virtualizacao ativada.
 
-    wsl --status >nul 2>&1
-    if errorlevel 1 (
-        echo 📦 Instalando WSL2 e Ubuntu...
-        wsl --install -d Ubuntu --no-launch
-        if errorlevel 1 (
-            echo ❌ ERRO: Falha ao instalar o WSL/Ubuntu.
-            exit /b 1
-        )
-        echo ❗ ACAO NECESSARIA: Uma janela do Ubuntu ira abrir. Crie seu usuario e senha nela, depois feche-a e pressione uma tecla aqui.
-        pause
-        start "Ubuntu Setup" wsl -d Ubuntu
+    :: Verifica se QUALQUER distribuição Ubuntu já existe para QUALQUER usuário
+    wsl --list | findstr "Ubuntu" >nul
+    if not errorlevel 1 (
+        echo ✅ Uma distribuicao Ubuntu ja foi encontrada no sistema.
+        goto :install_docker_in_wsl
     )
 
+    :: Se nenhuma foi encontrada, prossegue com a instalação
+    echo 📦 Nenhuma distribuicao Ubuntu encontrada. Instalando WSL2 e Ubuntu...
+    wsl --install -d Ubuntu --no-launch
+    if errorlevel 1 (
+        call :log_error "Falha ao instalar WSL/Ubuntu."
+        echo ❌ ERRO: Falha ao instalar o WSL/Ubuntu.
+        exit /b 1
+    )
+    echo.
+    echo ❗ ACAO NECESSARIA - CRIE SEU USUARIO LINUX ❗
+    echo    Uma janela do Ubuntu ira abrir. Crie seu usuario e senha nela.
+    echo    Apos criar, feche a janela do Ubuntu e pressione uma tecla aqui.
+    pause
+    start "Ubuntu Setup" wsl -d Ubuntu
+    
+    :: Loop de espera para garantir que a distro esteja pronta
+    echo ⏳ Verificando se a distribuicao esta pronta...
+    set "retries=0"
+    :wait_for_distro_ready
+    if %retries% geq 15 (
+        echo ❌ ERRO: A distribuicao Ubuntu nao parece estar respondendo.
+        exit /b 1
+    )
+    wsl -d Ubuntu -- exec /bin/true >nul 2>&1
+    if not errorlevel 1 (
+        echo ✅ Distribuicao Ubuntu pronta.
+        goto :install_docker_in_wsl
+    )
+    timeout /t 10 /nobreak >nul
+    set /a retries+=1
+    goto :wait_for_distro_ready
+
+:install_docker_in_wsl
+    :: Instalar Docker no WSL se não estiver presente
     wsl -d Ubuntu -- docker --version >nul 2>&1
     if errorlevel 1 (
         echo 📦 Instalando Docker dentro do Ubuntu...
