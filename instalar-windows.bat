@@ -216,18 +216,27 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.4"
     goto :eof
 
 :create_wsl_shortcuts
+    call :log_info "Criando atalhos para WSL"
+    
+    set "WSL_PATH_CMD=wsl wslpath '%CD%'"
+    for /f "delims=" %%a in ('%WSL_PATH_CMD%') do set "LINUX_PATH=%%a"
+
     (
         echo @echo off
-        echo wsl -d Ubuntu -- bash -c "cd %CD% && sudo docker-compose up --build -d"
+        echo wsl -- bash -c "cd ""%LINUX_PATH%"" && sudo docker-compose up --build -d"
     ) > "start.bat"
+
     (
         echo @echo off
-        echo wsl -d Ubuntu -- bash -c "cd %CD% && sudo docker-compose down"
+        echo wsl -- bash -c "cd ""%LINUX_PATH%"" && sudo docker-compose down"
     ) > "stop.bat"
+
     (
         echo @echo off
-        echo wsl -d Ubuntu -- explorer.exe %CD%\\transcriber_web_app\\videos
+        echo wsl -- explorer.exe "%LINUX_PATH%/transcriber_web_app/videos"
     ) > "open-files-folder.bat"
+    
+    echo ✅ Scripts de atalho para WSL criados.
     goto :eof
 
 :: ============================================================================
