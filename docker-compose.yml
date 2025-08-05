@@ -23,8 +23,6 @@ services:
     build:
       context: ./transcriber_web_app
       dockerfile: Dockerfile.whisper
-      tags:
-        - "transcriber-worker:1.2"
     volumes:
       - ./transcriber_web_app/videos:/data/videos:ro
       - ./transcriber_web_app/results:/data/results
