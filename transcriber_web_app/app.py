@@ -5,13 +5,14 @@ import docker
 import threading
 import json
 import re
+import time
 from werkzeug.utils import secure_filename
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, Response
 from config import config
 
 # Configurar logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG, # Alterado para DEBUG para ver os logs detalhados
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
@@ -42,17 +43,14 @@ def allowed_file(filename):
     if extension not in app.config['ALLOWED_EXTENSIONS']:
         return False
     
-    # Verificar tamanho do nome
     if len(filename) > app.config['MAX_FILENAME_LENGTH']:
         return False
     
-    # Verificar caracteres perigosos (mas permitir espaços e pontos duplos no nome)
     dangerous_chars = ['/', '\\', '<', '>', ':', '"', '|', '?', '*']
     for char in dangerous_chars:
         if char in filename:
             return False
     
-    # Verificar path traversal específico (mas não pontos duplos no nome do arquivo)
     if filename.startswith('..') or '/..' in filename or '\\..' in filename:
         return False
     
@@ -64,20 +62,14 @@ def index():
 
 @app.route('/favicon.ico')
 def favicon():
-    # Retorna 204 No Content para evitar erros 404 no console se não houver favicon
     return '', 204
 
 def run_transcription_in_thread(job_id, worker_container_name, transcribe_command_list):
-    """
-    Executa o comando de transcrição em uma thread separada.
-    Loga stdout, stderr e o código de saída do processo worker.
-    """
+    """Executa o comando de transcrição em uma thread separada."""
     try:
         client = docker.from_env()
         worker_container = client.containers.get(worker_container_name)
-
         logger.info(f"THREAD JOB_ID: {job_id} - Iniciando execução de exec_run no worker '{worker_container_name}'...")
-
         exec_result = worker_container.exec_run(
             transcribe_command_list,
             tty=False,
@@ -86,21 +78,14 @@ def run_transcription_in_thread(job_id, worker_container_name, transcribe_comman
         exit_code = exec_result.exit_code
         stdout_bytes = exec_result.output[0]
         stderr_bytes = exec_result.output[1]
-
         stdout = stdout_bytes.decode('utf-8', errors='replace') if stdout_bytes else ""
         stderr = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else ""
 
-        logger.info(f"THREAD JOB_ID: {job_id} - Comando exec_run finalizado no worker '{worker_container_name}'.")
-        logger.info(f"THREAD JOB_ID: {job_id} - Return Code do worker: {exit_code}")
+        logger.info(f"THREAD JOB_ID: {job_id} - Comando exec_run finalizado. Return Code: {exit_code}")
         if stdout:
             logger.info(f"THREAD JOB_ID: {job_id} - STDOUT do worker:\n{stdout}")
         if stderr:
             logger.error(f"THREAD JOB_ID: {job_id} - STDERR do worker:\n{stderr}")
-
-        if exit_code != 0:
-            logger.error(f"THREAD JOB_ID: {job_id} - Comando no worker falhou.")
-        else:
-            logger.info(f"THREAD JOB_ID: {job_id} - Comando executado com sucesso pelo worker.")
 
     except Exception as e:
         logger.error(f"THREAD JOB_ID: {job_id} - Erro na thread de transcrição: {e}", exc_info=True)
@@ -108,33 +93,27 @@ def run_transcription_in_thread(job_id, worker_container_name, transcribe_comman
 @app.route('/upload_and_transcribe', methods=['POST'])
 def upload_and_transcribe():
     if 'videoFile' not in request.files:
-        logger.warning("Nenhum arquivo enviado na requisição.")
         return jsonify({"error": "Nenhum arquivo enviado"}), 400
 
     file = request.files['videoFile']
     model_size = request.form.get('modelSize', 'small')
 
     if file.filename == '':
-        logger.warning("Nome de arquivo vazio selecionado.")
         return jsonify({"error": "Nenhum arquivo selecionado"}), 400
 
     if file and allowed_file(file.filename):
-        # Usar secure_filename para prevenir path traversal
         filename = secure_filename(file.filename)
         job_id = str(uuid.uuid4())
-
         original_filepath_in_app = os.path.join(app.config['UPLOAD_FOLDER'], filename)
 
         try:
             file.save(original_filepath_in_app)
-            logger.info(f"Arquivo '{filename}' salvo em '{original_filepath_in_app}' para o job {job_id}.")
         except Exception as e:
-            logger.error(f"Erro ao salvar o arquivo '{filename}' para o job {job_id}: {e}", exc_info=True)
+            logger.error(f"Erro ao salvar o arquivo '{filename}': {e}", exc_info=True)
             return jsonify({"error": f"Erro ao salvar arquivo: {str(e)}"}), 500
 
-        job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
-        os.makedirs(job_results_path_in_app, exist_ok=True)
-
+        os.makedirs(os.path.join(app.config['RESULTS_FOLDER'], job_id), exist_ok=True)
+        
         video_path_in_worker = os.path.join(app.config['WORKER_VIDEOS_FOLDER'], filename)
         output_dir_in_worker = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id)
 
@@ -145,16 +124,8 @@ def upload_and_transcribe():
             "--output_dir", output_dir_in_worker
         ]
 
-        cmd_string_for_log = ' '.join(transcribe_command)
-        logger.info(f"JOB_ID: {job_id} - Comando a ser executado no worker: {cmd_string_for_log}")
-
         try:
             client = docker.from_env()
-            
-            if not app.config['COMPOSE_PROJECT_NAME']:
-                logger.error(f"JOB_ID: {job_id} - COMPOSE_PROJECT_NAME não está definido. Não é possível encontrar o worker por label.")
-                return jsonify({"error": "Configuração do servidor incompleta: nome do projeto Docker não definido."}), 500
-
             filters = {
                 "label": [
                     f"com.docker.compose.project={app.config['COMPOSE_PROJECT_NAME']}",
@@ -164,124 +135,117 @@ def upload_and_transcribe():
             worker_containers = client.containers.list(all=True, filters=filters)
 
             if not worker_containers:
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' para o projeto '{app.config['COMPOSE_PROJECT_NAME']}' não encontrado.")
-                return jsonify({"error": f"Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' não encontrado."}), 500
+                logger.error(f"Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' não encontrado.")
+                return jsonify({"error": "Container do worker não encontrado."}),
 
             worker_container_obj = worker_containers[0]
             if worker_container_obj.status != "running":
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{worker_container_obj.name}' encontrado, mas não está em execução. Status: {worker_container_obj.status}")
-                return jsonify({"error": f"Container do worker '{worker_container_obj.name}' não está em execução (status: {worker_container_obj.status})."}), 500
+                logger.error(f"Container do worker '{worker_container_obj.name}' não está em execução (status: {worker_container_obj.status}).")
+                return jsonify({"error": "Worker não está em execução."}),
 
-            logger.info(f"JOB_ID: {job_id} - Iniciando thread para executar comando no container worker '{worker_container_obj.name}'...")
-
-            # Executar em uma thread para não bloquear a requisição Flask
             thread = threading.Thread(target=run_transcription_in_thread, args=(job_id, worker_container_obj.name, transcribe_command))
             thread.daemon = True
             thread.start()
 
             return jsonify({
-                "message": "Transcrição iniciada em background.",
+                "message": "Transcrição iniciada.",
                 "job_id": job_id,
                 "filename": filename,
                 "model_size": model_size
             }), 202
 
-        except docker.errors.NotFound:
-            logger.error(f"JOB_ID: {job_id} - Container do worker não encontrado via API Docker.", exc_info=True)
-            return jsonify({"error": "Container do worker não encontrado."}), 500
-        except docker.errors.APIError as e_api:
-            logger.error(f"JOB_ID: {job_id} - Erro na API Docker: {e_api}", exc_info=True)
-            return jsonify({"error": f"Erro na API Docker: {str(e_api)}"}), 500
         except Exception as e:
-            logger.error(f"JOB_ID: {job_id} - Erro inesperado ao tentar iniciar a transcrição via API Docker: {e}", exc_info=True)
-            return jsonify({"error": f"Falha inesperada durante a chamada da transcrição: {str(e)}"}), 500
+            logger.error(f"Erro inesperado ao iniciar a transcrição: {e}", exc_info=True)
+            return jsonify({"error": f"Falha ao iniciar a transcrição: {str(e)}"}), 500
     else:
-        logger.warning(f"Tentativa de upload de tipo de arquivo não permitido: {file.filename}")
         return jsonify({"error": "Tipo de arquivo não permitido"}), 400
 
-@app.route('/status/<job_id>', methods=['GET'])
-def get_status(job_id):
-    # Validar job_id para prevenir path traversal
-    if not re.match(r'^[a-f0-9-]{36}$', job_id):
-        logger.warning(f"Job ID inválido recebido: {job_id}")
-        return jsonify({"error": "Job ID inválido"}), 400
-    
-    job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
+def generate_status_stream(job_id):
+    """Gera um stream de Server-Sent Events (SSE) para o status do job."""
+    job_results_path = os.path.join(app.config['RESULTS_FOLDER'], job_id)
+    last_progress = {}
 
-    if not os.path.exists(job_results_path_in_app):
-        logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não encontrado em '{job_results_path_in_app}'.")
-        return jsonify({"job_id": job_id, "status": "Não encontrado", "files": []}), 404
+    while True:
+        logger.debug(f"STREAM {job_id}: Verificando caminho: {job_results_path}")
+        if not os.path.exists(job_results_path):
+            logger.debug(f"STREAM {job_id}: Caminho não existe. Enviando 'Não encontrado'.")
+            message = {"status": "Não encontrado", "error": "Job não encontrado."}
+            yield f"data: {json.dumps(message)}\n\n"
+            break
 
-    output_files = []
-    try:
-        if not os.path.isdir(job_results_path_in_app):
-            logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não é um diretório válido em '{job_results_path_in_app}'.")
-            return jsonify({"job_id": job_id, "status": "Erro (caminho inválido)", "files": []}), 404
+        # Verificar se a transcrição foi concluída
+        output_files = []
+        try:
+            dir_contents = os.listdir(job_results_path)
+            logger.debug(f"STREAM {job_id}: Conteúdo do diretório: {dir_contents}")
+            for f_name in dir_contents:
+                if f_name.endswith((".txt", ".srt", ".vtt")):
+                    file_type = f_name.rsplit('.', 1)[1]
+                    output_files.append({
+                        "type": file_type,
+                        "filename": f_name,
+                        "url": f"/results/{job_id}/{f_name}"
+                    })
+            logger.debug(f"STREAM {job_id}: Arquivos de saída encontrados: {output_files}")
+        except Exception as e:
+            logger.error(f"STREAM {job_id}: Erro ao listar diretório: {e}", exc_info=True)
+            # Se houver erro ao listar, tratamos como não encontrado ou erro
+            message = {"status": "Erro", "error": f"Erro ao acessar resultados: {str(e)}"}
+            yield f"data: {json.dumps(message)}\n\n"
+            break
 
-        for f_name in os.listdir(job_results_path_in_app):
-            if f_name.endswith((".txt", ".srt", ".vtt")):
-                file_type = f_name.rsplit('.', 1)[1].lower()
-                output_files.append({
-                    "type": file_type,
-                    "filename": f_name,
-                    "url": f"/results/{job_id}/{f_name}"
-                })
+        if output_files:
+            logger.debug(f"STREAM {job_id}: Arquivos de saída detectados. Enviando 'Concluído'.")
+            files_info = [{
+                "type": f['type'],
+                "filename": f['filename'],
+                "url": f['url']
+            } for f in output_files]
+            
+            message = {"status": "Concluído", "files": files_info, "progress": {"percentage": 100, "status_text": "Concluído"}}
+            yield f"data: {json.dumps(message)}\n\n"
+            break
 
-        if not output_files:
-            logger.debug(f"JOB_ID: {job_id} - Status check: Processando, nenhum arquivo de resultado encontrado em '{job_results_path_in_app}'.")
-            # Ler informações de progresso se estiver processando
-            progress_data = {"percentage": 0, "status_text": "Processando..."}
-            progress_file_path = os.path.join(job_results_path_in_app, "_progress.json")
-            if os.path.exists(progress_file_path):
-                try:
-                    with open(progress_file_path, 'r', encoding='utf-8') as pf:
-                        progress_info = json.load(pf)
-                        progress_data["percentage"] = progress_info.get("percentage", 0)
-                        progress_data["status_text"] = progress_info.get("status_text", "Processando...")
-                    logger.debug(f"JOB_ID: {job_id} - Progresso lido: {progress_data}")
-                except Exception as e_progress:
-                    logger.error(f"JOB_ID: {job_id} - Erro ao ler arquivo de progresso '{progress_file_path}': {e_progress}")
-            return jsonify({"job_id": job_id, "status": "Processando", "files": [], "progress": progress_data})
+        # If not complete, check _progress.json
+        progress_file_path = os.path.join(job_results_path, "_progress.json")
+        current_progress = {}
+        logger.debug(f"STREAM {job_id}: Verificando arquivo de progresso: {progress_file_path}")
+        if os.path.exists(progress_file_path):
+            try:
+                with open(progress_file_path, 'r', encoding='utf-8') as pf:
+                    current_progress = json.load(pf)
+                logger.debug(f"STREAM {job_id}: Progresso lido: {current_progress}")
+            except (json.JSONDecodeError, FileNotFoundError) as e:
+                logger.error(f"STREAM {job_id}: Erro ao ler arquivo de progresso: {e}", exc_info=True)
+                # Se houver erro ao ler o progresso, pode ser um arquivo incompleto, continua tentando
+                pass
+        
+        if current_progress and current_progress != last_progress:
+            logger.debug(f"STREAM {job_id}: Progresso atualizado. Enviando 'Processando'.")
+            message = {"status": "Processando", "progress": current_progress}
+            yield f"data: {json.dumps(message)}\n\n"
+            last_progress = current_progress
         else:
-            logger.info(f"JOB_ID: {job_id} - Status check: Concluído. Arquivos: {[f['filename'] for f in output_files]}.")
-            # Se concluído, o progresso é 100%
-            progress_data = {"percentage": 100, "status_text": "Concluído"}
-            return jsonify({"job_id": job_id, "status": "Concluído", "files": output_files, "progress": progress_data})
+            logger.debug(f"STREAM {job_id}: Progresso inalterado ou vazio.")
 
-    except FileNotFoundError:
-        logger.warning(f"JOB_ID: {job_id} - Status check: Diretório de resultados desapareceu de '{job_results_path_in_app}'.")
-        return jsonify({"job_id": job_id, "status": "Erro (diretório sumiu)", "files": []}), 404
-    except Exception as e:
-        logger.error(f"JOB_ID: {job_id} - Status check: Erro ao verificar status em '{job_results_path_in_app}': {e}", exc_info=True)
-        return jsonify({"error": f"Erro ao obter status: {str(e)}"}), 500
+        time.sleep(2)
+
+@app.route('/stream/<job_id>')
+def stream_status(job_id):
+    if not re.match(r'^[a-f0-9-]{36}$', job_id):
+        return jsonify({"error": "Job ID inválido"}), 400
+    return Response(generate_status_stream(job_id), mimetype='text/event-stream')
 
 @app.route('/results/<job_id>/<filename>', methods=['GET'])
 def serve_result_file(job_id, filename):
-    # Validar job_id
-    if not re.match(r'^[a-f0-9-]{36}$', job_id):
-        logger.warning(f"Job ID inválido em /results: {job_id}")
-        return "Job ID inválido.", 400
+    if not re.match(r'^[a-f0-9-]{36}$', job_id) or not re.match(r'^[a-zA-Z0-9._-]+\.(txt|srt|vtt)$', filename):
+        return "ID do Job ou nome do arquivo inválido.", 400
     
-    # Validar filename mais rigorosamente
-    if not re.match(r'^[a-zA-Z0-9._-]+\.(txt|srt|vtt)$', filename):
-        logger.warning(f"Nome de arquivo inválido em /results: job_id={job_id}, filename={filename}")
-        return "Nome de arquivo inválido.", 403
-    
-    results_dir_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
-    
-    # Verificar se o diretório existe
-    if not os.path.exists(results_dir_in_app):
-        return "Job não encontrado.", 404
-    
-    file_path = os.path.join(results_dir_in_app, filename)
-    
-    # Verificar se o arquivo existe e está dentro do diretório esperado
-    if not os.path.exists(file_path) or not os.path.commonpath([results_dir_in_app, file_path]) == results_dir_in_app:
-        logger.warning(f"Tentativa de acesso a arquivo fora do diretório: {file_path}")
+    results_dir = os.path.join(app.config['RESULTS_FOLDER'], job_id)
+    if not os.path.exists(os.path.join(results_dir, filename)):
         return "Arquivo não encontrado.", 404
-
-    logger.debug(f"Servindo arquivo: '{filename}' do diretório '{results_dir_in_app}'.")
-    return send_from_directory(results_dir_in_app, filename, as_attachment=True)
+        
+    return send_from_directory(results_dir, filename, as_attachment=True)
 
 @app.route('/config', methods=['GET'])
 def get_config():
@@ -289,8 +253,7 @@ def get_config():
     return jsonify({
         "max_file_size": app.config['MAX_FILE_SIZE_DISPLAY'],
         "max_file_size_bytes": app.config['MAX_CONTENT_LENGTH'],
-        "allowed_extensions": list(app.config['ALLOWED_EXTENSIONS']),
-        "poll_interval": app.config['STATUS_POLL_INTERVAL']
+        "allowed_extensions": list(app.config['ALLOWED_EXTENSIONS'])
     })
 
 @app.errorhandler(413)

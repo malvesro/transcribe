@@ -208,6 +208,29 @@ call :log_info "Iniciando %PROJECT_NAME% Instalador v3.2"
     :: Criar diretórios e .env
     mkdir "transcriber_web_app\videos" 2>nul
     mkdir "transcriber_web_app\results" 2>nul
+
+    :: Ajustar permissoes para WSL/Docker
+    echo. 
+    echo --- AJUSTANDO PERMISSOES DOS DIRETORIOS DE DADOS ---
+    echo. 
+    :: O UID/GID 1000 e o padrao para o appuser dentro do container.
+    :: O caminho precisa ser mapeado para o WSL (ex: /mnt/c/path/to/project)
+    set "PROJECT_PATH_WSL=/mnt/c%CD:C:=%"
+    set "VIDEOS_PATH_WSL=%PROJECT_PATH_WSL%\transcriber_web_app\videos"
+    set "RESULTS_PATH_WSL=%PROJECT_PATH_WSL%\transcriber_web_app\results"
+
+    echo Executando chown/chmod via WSL para %VIDEOS_PATH_WSL% e %RESULTS_PATH_WSL%...
+    wsl -d Ubuntu -- bash -c "sudo chown -R 1000:1000 '%VIDEOS_PATH_WSL%'"
+    wsl -d Ubuntu -- bash -c "sudo chown -R 1000:1000 '%RESULTS_PATH_WSL%'"
+    wsl -d Ubuntu -- bash -c "sudo chmod -R a+rx '%VIDEOS_PATH_WSL%'"
+    wsl -d Ubuntu -- bash -c "sudo chmod -R a+rx '%RESULTS_PATH_WSL%'"
+    if errorlevel 1 (
+        echo ❌ ERRO: Falha ao ajustar permissoes via WSL.
+        call :log_error "Falha ao ajustar permissoes via WSL."
+        exit /b 1
+    )
+    echo ✅ Permissoes ajustadas.
+
     if not exist ".env" (
         echo MAX_FILE_SIZE_GB=15 > .env
         echo FLASK_ENV=development >> .env

@@ -63,10 +63,10 @@ TRANSCRIPTION_TIMEOUT=3600
 
 ## 🔧 Solução de Problemas (Troubleshooting)
 
-Se a aplicação não se comportar como esperado, especialmente após uma atualização, a primeira etapa é forçar uma reconstrução completa do ambiente. Para isso, execute o script correspondente ao seu sistema operacional:
+Se a aplicação não se comportar como esperado, especialmente após uma atualização, a primeira etapa é forçar uma reconstrução completa do ambiente. Para isso, execute o comando correspondente ao seu sistema operacional:
 
-*   **Windows**: Execute o arquivo `force-rebuild.bat`.
-*   **Linux/macOS**: Execute o comando `./force-rebuild.sh`.
+*   **Windows**: Execute o comando `manage.bat rebuild`.
+*   **Linux/macOS**: Execute o comando `./manage.sh rebuild`.
 
 Este script irá parar, remover e reconstruir todos os componentes da aplicação, garantindo que você esteja usando a versão mais recente e limpa.
 

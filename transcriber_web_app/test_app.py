@@ -1,209 +1,259 @@
-#!/usr/bin/env python3
-"""
-Testes unitários completos para a aplicação Whisper Transcriber
-
-Este arquivo contém testes que podem requerer Docker para funcionalidade completa.
-Para testes que funcionam sem Docker, veja test_local.py
-
-Categorias de teste:
-- TestFileValidation: Validação de arquivos e extensões
-- TestRoutes: Testes de rotas e endpoints da API
-- TestUpload: Upload de arquivos e integração com Docker
-- TestSecurity: Testes de segurança e validação
-- TestConfiguration: Testes de configuração da aplicação
-
-Execução:
-    python test_app.py
-    python -m pytest test_app.py -v
-    python ../run_tests.py --full
-"""
-import unittest
-import tempfile
+import pytest
 import os
 import json
-from unittest.mock import patch, MagicMock
-from app import app, allowed_file
-from config import Config
+from unittest.mock import patch, MagicMock, mock_open
+from io import BytesIO
+from app import app, allowed_file, generate_status_stream
 
-class TranscriberTestCase(unittest.TestCase):
-    """Classe base para testes da aplicação"""
+# Configura o app para testes
+@pytest.fixture
+def client():
+    app.config['TESTING'] = True
+    app.config['UPLOAD_FOLDER'] = 'test_videos'
+    app.config['RESULTS_FOLDER'] = 'test_results'
+    app.config['COMPOSE_PROJECT_NAME'] = 'test_transcribe' # Usar nome de projeto de teste
+    app.config['WHISPER_WORKER_SERVICE_NAME'] = 'whisper_worker'
 
-    def setUp(self):
-        """Configuração inicial para cada teste"""
-        self.app = app
-        self.app.config['TESTING'] = True
-        self.app.config['UPLOAD_FOLDER'] = tempfile.mkdtemp()
-        self.app.config['RESULTS_FOLDER'] = tempfile.mkdtemp()
-        self.client = self.app.test_client()
+    # Garante que os diretórios de teste existam e estejam limpos
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+    os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
+    
+    with app.test_client() as client:
+        yield client
 
-    def tearDown(self):
-        """Limpeza após cada teste"""
-        # Limpar diretórios temporários se necessário
-        pass
+    # Limpa os diretórios de teste após cada teste
+    import shutil
+    if os.path.exists(app.config['UPLOAD_FOLDER']):
+        shutil.rmtree(app.config['UPLOAD_FOLDER'])
+    if os.path.exists(app.config['RESULTS_FOLDER']):
+        shutil.rmtree(app.config['RESULTS_FOLDER'])
 
-class TestFileValidation(TranscriberTestCase):
-    """Testes para validação de arquivos"""
+# Testes para a função allowed_file
+def test_allowed_file_valid():
+    assert allowed_file("test.mp4") == True
+    assert allowed_file("audio.mp3") == True
+    assert allowed_file("video.mov") == True
+    assert allowed_file("file with spaces.wav") == True
+    assert allowed_file("file.with.dots.flac") == True
 
-    def test_allowed_file_valid_extensions(self):
-        """Testa extensões de arquivo válidas"""
-        valid_files = [
-            'test.mp4', 'audio.mp3', 'video.mov',
-            'sound.wav', 'music.flac', 'voice.m4a'
-        ]
-        for filename in valid_files:
-            with self.subTest(filename=filename):
-                self.assertTrue(allowed_file(filename))
+def test_allowed_file_invalid_extension():
+    assert allowed_file("document.pdf") == False
+    assert allowed_file("image.jpg") == False
+    assert allowed_file("script.js") == False
 
-    def test_allowed_file_invalid_extensions(self):
-        """Testa extensões de arquivo inválidas"""
-        invalid_files = [
-            'test.exe', 'script.py', 'document.pdf',
-            'image.jpg', 'archive.zip', 'text.txt'
-        ]
-        for filename in invalid_files:
-            with self.subTest(filename=filename):
-                self.assertFalse(allowed_file(filename))
+def test_allowed_file_no_extension():
+    assert allowed_file("filename") == False
 
-    def test_allowed_file_edge_cases(self):
-        """Testa casos extremos de validação de arquivo"""
-        edge_cases = [
-            ('', False),  # Nome vazio
-            ('file_without_extension', False),  # Sem extensão
-            ('.mp4', True),  # Apenas extensão
-            ('a' * 300 + '.mp4', False),  # Nome muito longo
-            ('file with spaces.mp4', True),  # Espaços no nome
-            ('file..mp4', True),  # Pontos duplos
-        ]
-        for filename, expected in edge_cases:
-            with self.subTest(filename=filename):
-                self.assertEqual(allowed_file(filename), expected)
+def test_allowed_file_empty_filename():
+    assert allowed_file("") == False
 
-class TestRoutes(TranscriberTestCase):
-    """Testes para rotas da aplicação"""
+def test_allowed_file_long_filename():
+    long_name = "a" * 250 + ".mp4"
+    assert allowed_file(long_name) == True
+    long_name_too_long = "a" * 256 + ".mp4"
+    assert allowed_file(long_name_too_long) == False
 
-    def test_index_route(self):
-        """Testa se a rota principal retorna a página inicial"""
-        response = self.client.get('/')
-        self.assertEqual(response.status_code, 200)
+def test_allowed_file_dangerous_chars():
+    assert allowed_file("file/name.mp4") == False
+    assert allowed_file("file\name.mp4") == False
+    assert allowed_file("file<name.mp4") == False
+    assert allowed_file("file>name.mp4") == False
+    assert allowed_file("file:name.mp4") == False
+    assert allowed_file("file\"name.mp4") == False
+    assert allowed_file("file|name.mp4") == False
+    assert allowed_file("file?name.mp4") == False
+    assert allowed_file("file*name.mp4") == False
 
-    def test_favicon_route(self):
-        """Testa se a rota do favicon retorna 204"""
-        response = self.client.get('/favicon.ico')
-        self.assertEqual(response.status_code, 204)
+def test_allowed_file_path_traversal():
+    assert allowed_file("../file.mp4") == False
+    assert allowed_file("dir/../file.mp4") == False
+    assert allowed_file("dir\..\file.mp4") == False
 
-    def test_status_invalid_job_id(self):
-        """Testa status com job_id inválido"""
-        invalid_ids = ['invalid', '123', 'not-a-uuid', '../../../etc/passwd']
-        for job_id in invalid_ids:
-            with self.subTest(job_id=job_id):
-                response = self.client.get(f'/status/{job_id}')
-                self.assertEqual(response.status_code, 400)
+# Testes para a rota index
+def test_index_page(client):
+    rv = client.get('/')
+    assert rv.status_code == 200
+    assert b"Whisper Transcriber" in rv.data
 
-    def test_status_nonexistent_job(self):
-        """Testa status de job que não existe"""
-        fake_uuid = '12345678-1234-5678-9012-123456789012'
-        response = self.client.get(f'/status/{fake_uuid}')
-        self.assertEqual(response.status_code, 404)
+# Testes para a rota upload_and_transcribe
+@patch('app.docker.from_env')
+@patch('app.os.makedirs')
+@patch('app.secure_filename', side_effect=lambda x: x) # Mock secure_filename para simplificar
+def test_upload_and_transcribe_success(mock_secure_filename, mock_makedirs, mock_docker_from_env, client):
+    mock_client = MagicMock()
+    mock_container = MagicMock()
+    mock_container.status = "running"
+    mock_client.containers.list.return_value = [mock_container]
+    mock_docker_from_env.return_value = mock_client
 
-class TestUpload(TranscriberTestCase):
-    """Testes para upload de arquivos"""
+    data = {
+        'videoFile': (BytesIO(b"dummy video content"), 'test_video.mp4'),
+        'modelSize': 'small'
+    }
+    rv = client.post('/upload_and_transcribe', data=data, content_type='multipart/form-data')
 
-    def test_upload_no_file(self):
-        """Testa upload sem arquivo"""
-        response = self.client.post('/upload_and_transcribe')
-        self.assertEqual(response.status_code, 400)
-        data = json.loads(response.data)
-        self.assertIn('error', data)
+    assert rv.status_code == 202
+    json_data = rv.get_json()
+    assert "job_id" in json_data
+    assert "message" in json_data
+    mock_docker_from_env.assert_called_once()
+    mock_client.containers.list.assert_called_once()
+    # Verifica se a thread de transcrição foi iniciada
+    assert mock_container.exec_run.called # run_transcription_in_thread chama exec_run
 
-    def test_upload_empty_filename(self):
-        """Testa upload com nome de arquivo vazio"""
-        data = {'videoFile': (open(__file__, 'rb'), '')}
-        response = self.client.post('/upload_and_transcribe', data=data)
-        self.assertEqual(response.status_code, 400)
+@patch('app.docker.from_env')
+def test_upload_and_transcribe_no_file(mock_docker_from_env, client):
+    rv = client.post('/upload_and_transcribe', data={}, content_type='multipart/form-data')
+    assert rv.status_code == 400
+    assert "Nenhum arquivo enviado" in rv.get_json()['error']
 
-    @patch('app.docker.from_env')
-    def test_upload_valid_file(self, mock_docker):
-        """Testa upload de arquivo válido"""
-        # Mock do Docker client
-        mock_client = MagicMock()
-        mock_container = MagicMock()
-        mock_container.status = 'running'
-        mock_container.name = 'test_worker'
-        mock_client.containers.list.return_value = [mock_container]
-        mock_docker.return_value = mock_client
+@patch('app.docker.from_env')
+def test_upload_and_transcribe_invalid_file_type(mock_docker_from_env, client):
+    data = {
+        'videoFile': (BytesIO(b"dummy pdf content"), 'document.pdf'),
+        'modelSize': 'small'
+    }
+    rv = client.post('/upload_and_transcribe', data=data, content_type='multipart/form-form-data')
+    assert rv.status_code == 400
+    assert "Tipo de arquivo não permitido" in rv.get_json()['error']
 
-        # Criar arquivo temporário para teste
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
-            tmp_file.write(b'fake video content')
-            tmp_file.flush()
+@patch('app.docker.from_env')
+def test_upload_and_transcribe_worker_not_found(mock_docker_from_env, client):
+    mock_client = MagicMock()
+    mock_client.containers.list.return_value = [] # Nenhum container encontrado
+    mock_docker_from_env.return_value = mock_client
 
-            with open(tmp_file.name, 'rb') as test_file:
-                data = {
-                    'videoFile': (test_file, 'test_video.mp4'),
-                    'modelSize': 'small'
-                }
-                response = self.client.post('/upload_and_transcribe',
-                                          data=data,
-                                          content_type='multipart/form-data')
+    data = {
+        'videoFile': (BytesIO(b"dummy video content"), 'test_video.mp4'),
+        'modelSize': 'small'
+    }
+    rv = client.post('/upload_and_transcribe', data=data, content_type='multipart/form-data')
+    assert rv.status_code == 500
+    assert "Container do worker não encontrado" in rv.get_json()['error']
 
-                # Deve retornar 202 (Accepted) se tudo estiver configurado
-                # ou 500 se houver problemas de configuração
-                self.assertIn(response.status_code, [202, 500])
+@patch('app.docker.from_env')
+def test_upload_and_transcribe_worker_not_running(mock_docker_from_env, client):
+    mock_client = MagicMock()
+    mock_container = MagicMock()
+    mock_container.status = "exited" # Worker não está rodando
+    mock_client.containers.list.return_value = [mock_container]
+    mock_docker_from_env.return_value = mock_client
 
-        # Limpar arquivo temporário
-        os.unlink(tmp_file.name)
+    data = {
+        'videoFile': (BytesIO(b"dummy video content"), 'test_video.mp4'),
+        'modelSize': 'small'
+    }
+    rv = client.post('/upload_and_transcribe', data=data, content_type='multipart/form-data')
+    assert rv.status_code == 500
+    assert "Worker não está em execução" in rv.get_json()['error']
 
-class TestSecurity(TranscriberTestCase):
-    """Testes de segurança"""
+# Testes para a rota stream_status (SSE)
+@patch('app.os.path.exists')
+@patch('app.os.listdir')
+@patch('app.time.sleep')
+def test_generate_status_stream_processing(mock_sleep, mock_listdir, mock_exists):
+    job_id = "test_job_id"
+    mock_exists.side_effect = [True, True, False] # job_results_path, progress_file, then exit
+    mock_listdir.return_value = [] # Nenhum arquivo de saída ainda
 
-    def test_path_traversal_in_results(self):
-        """Testa tentativas de path traversal na rota de resultados"""
-        malicious_paths = [
-            '../../../etc/passwd',
-            '..\\..\\..\\windows\\system32\\config\\sam',
-            'job-id/../../../sensitive_file',
-            'valid-uuid/../../config.py'
-        ]
+    # Mock para o arquivo _progress.json
+    mock_progress_content = json.dumps({"percentage": 50, "status_text": "Processando"})
+    with patch('builtins.open', mock_open(read_data=mock_progress_content)) as m_open:
+        generator = generate_status_stream(job_id)
+        
+        # Primeira iteração: processando
+        data = next(generator)
+        assert "data: {" in data
+        parsed_data = json.loads(data.replace("data: ", "").strip())
+        assert parsed_data['status'] == 'Processando'
+        assert parsed_data['progress']['percentage'] == 50
 
-        fake_uuid = '12345678-1234-5678-9012-123456789012'
-        for malicious_path in malicious_paths:
-            with self.subTest(path=malicious_path):
-                response = self.client.get(f'/results/{fake_uuid}/{malicious_path}')
-                # Deve retornar erro (400, 403 ou 404), nunca 200
-                self.assertNotEqual(response.status_code, 200)
+        # Segunda iteração: job não encontrado (para sair do loop)
+        with pytest.raises(StopIteration):
+            next(generator)
 
-    def test_invalid_file_extensions_in_results(self):
-        """Testa tentativas de acessar arquivos com extensões inválidas"""
-        fake_uuid = '12345678-1234-5678-9012-123456789012'
-        invalid_files = [
-            'config.py', 'app.py', 'secrets.json',
-            'malicious.exe', 'script.sh', 'data.db'
-        ]
+@patch('app.os.path.exists')
+@patch('app.os.listdir')
+@patch('app.time.sleep')
+def test_generate_status_stream_completed(mock_sleep, mock_listdir, mock_exists):
+    job_id = "test_job_id"
+    mock_exists.return_value = True
+    mock_listdir.return_value = ["output.txt", "output.srt"]
 
-        for filename in invalid_files:
-            with self.subTest(filename=filename):
-                response = self.client.get(f'/results/{fake_uuid}/{filename}')
-                self.assertEqual(response.status_code, 403)
+    generator = generate_status_stream(job_id)
+    data = next(generator)
+    assert "data: {" in data
+    parsed_data = json.loads(data.replace("data: ", "").strip())
+    assert parsed_data['status'] == 'Concluído'
+    assert len(parsed_data['files']) == 2
+    assert parsed_data['files'][0]['filename'] == 'output.txt'
 
-class TestConfiguration(unittest.TestCase):
-    """Testes para configurações"""
+    with pytest.raises(StopIteration):
+        next(generator)
 
-    def test_config_values(self):
-        """Testa se as configurações têm valores válidos"""
-        config = Config()
+@patch('app.os.path.exists')
+@patch('app.time.sleep')
+def test_generate_status_stream_not_found(mock_sleep, mock_exists):
+    job_id = "non_existent_job"
+    mock_exists.return_value = False # Diretório do job não existe
 
-        # Verificar se extensões permitidas estão definidas
-        self.assertIsInstance(config.ALLOWED_EXTENSIONS, set)
-        self.assertGreater(len(config.ALLOWED_EXTENSIONS), 0)
+    generator = generate_status_stream(job_id)
+    data = next(generator)
+    assert "data: {" in data
+    parsed_data = json.loads(data.replace("data: ", "").strip())
+    assert parsed_data['status'] == 'Não encontrado'
 
-        # Verificar limites de tamanho
-        self.assertGreater(config.MAX_CONTENT_LENGTH, 0)
-        self.assertGreater(config.MAX_FILENAME_LENGTH, 0)
+    with pytest.raises(StopIteration):
+        next(generator)
 
-        # Verificar configurações de diretório
-        self.assertIsInstance(config.UPLOAD_FOLDER, str)
-        self.assertIsInstance(config.RESULTS_FOLDER, str)
+# Testes para a rota serve_result_file
+@patch('app.send_from_directory')
+@patch('app.os.path.exists')
+def test_serve_result_file_success(mock_exists, mock_send_from_directory, client):
+    mock_exists.return_value = True
+    mock_send_from_directory.return_value = "file_content"
+    rv = client.get('/results/some_job_id/file.txt')
+    assert rv.status_code == 200
+    mock_send_from_directory.assert_called_once_with(
+        os.path.join(app.config['RESULTS_FOLDER'], 'some_job_id'), 'file.txt', as_attachment=True
+    )
 
-if __name__ == '__main__':
-    # Executar todos os testes
-    unittest.main(verbosity=2)
+def test_serve_result_file_invalid_job_id(client):
+    rv = client.get('/results/invalid-job-id/file.txt')
+    assert rv.status_code == 400
+
+def test_serve_result_file_invalid_filename(client):
+    rv = client.get('/results/some_job_id/malicious.exe')
+    assert rv.status_code == 400
+
+@patch('app.os.path.exists')
+def test_serve_result_file_not_found(mock_exists, client):
+    mock_exists.return_value = False
+    rv = client.get('/results/some_job_id/non_existent.txt')
+    assert rv.status_code == 404
+
+# Testes para a rota /config
+def test_get_config(client):
+    rv = client.get('/config')
+    assert rv.status_code == 200
+    json_data = rv.get_json()
+    assert "max_file_size" in json_data
+    assert "allowed_extensions" in json_data
+
+# Testes para error handlers
+def test_too_large_error_handler(client):
+    # Simula um erro 413
+    with app.test_request_context('/', content_length=app.config['MAX_CONTENT_LENGTH'] + 1):
+        rv = app.full_dispatch_request()
+        assert rv.status_code == 413
+        assert "Arquivo muito grande" in rv.get_json()['error']
+
+def test_internal_error_handler(client):
+    # Simula um erro 500
+    @app.route('/test_500')
+    def test_500_route():
+        raise Exception("Simulated internal error")
+    
+    rv = client.get('/test_500')
+    assert rv.status_code == 500
+    assert "Erro interno do servidor" in rv.get_json()['error']

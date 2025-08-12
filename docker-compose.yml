@@ -18,6 +18,8 @@ services:
       # Passa o nome do projeto Docker Compose para dentro do container webapp
       - DOCKER_COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
       # Adicionar outras variáveis de ambiente necessárias para o app.py
+    group_add:
+      - 999
     depends_on:
       - whisper_worker # Garante que o worker seja iniciado, embora a chamada seja síncrona via API Docker
     networks:
@@ -28,20 +30,19 @@ services:
     build:
       context: ./transcriber_web_app
       dockerfile: Dockerfile.whisper
-      tags:
-        - "transcriber-worker:1.2"
+      
     volumes:
       - ./transcriber_web_app/videos:/data/videos:ro # :ro para read-only, já que o worker não deve modificar o vídeo original
       - ./transcriber_web_app/results:/data/results
-      - whisper_models:/root/.cache/whisper # Volume nomeado para cache de modelos Whisper
+      - whisper_models:/home/appuser/.cache/whisper # Volume nomeado para cache de modelos Whisper
       # Para GPU (NVIDIA):
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: all # ou o número de GPUs que deseja alocar
-    #           capabilities: [gpu]
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all # ou o número de GPUs que deseja alocar
+              capabilities: [gpu]
     # Se não estiver usando deploy (ex: Swarm), a configuração de GPU para Compose v2+ pode ser:
     # runtime: nvidia # Se nvidia-container-runtime estiver configurado como padrão no Docker daemon
     environment:

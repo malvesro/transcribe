@@ -192,6 +192,16 @@ main() {
     echo -e "\n${BLUE}📁 Criando diretórios e arquivo .env (se não existirem)...${NC}"
     mkdir -p transcriber_web_app/videos
     mkdir -p transcriber_web_app/results
+
+    echo -e "${BLUE}🔒 Ajustando permissoes dos diretorios de dados...${NC}"
+    # UID/GID 1000 e o padrao para o primeiro usuario nao-root em muitas distros Linux
+    # e o UID/GID que o appuser tera dentro do container.
+    sudo chown -R 1000:1000 transcriber_web_app/videos
+    sudo chown -R 1000:1000 transcriber_web_app/results
+    # Garante que outros usuarios (appuser) possam ler e executar os diretorios
+    sudo chmod -R a+rx transcriber_web_app/videos
+    sudo chmod -R a+rx transcriber_web_app/results
+
     if [ ! -f ".env" ]; then
         echo "MAX_FILE_SIZE_GB=15" > .env
         echo "FLASK_ENV=development" >> .env

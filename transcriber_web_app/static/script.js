@@ -11,9 +11,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadPercentageText = document.getElementById('uploadPercentage'); // Span dentro do <p>
     const progressBar = document.getElementById('progressBar');
 
-    const monitoredJobs = new Set();
-    const pollingIntervals = {};
-
     // Exibir nome do arquivo selecionado
     videoFileIn.addEventListener('change', () => {
         if (videoFileIn.files.length > 0) {
@@ -26,7 +23,6 @@ document.addEventListener('DOMContentLoaded', () => {
     uploadForm.addEventListener('submit', async (event) => {
         event.preventDefault();
         if (!videoFileIn.files || videoFileIn.files.length === 0) {
-            // Usar uma notificação toast no futuro aqui
             alert('Por favor, selecione um arquivo para transcrever.');
             return;
         }
@@ -56,22 +52,20 @@ document.addEventListener('DOMContentLoaded', () => {
             };
 
             xhr.onload = async () => {
-                // Esconder progresso de upload um pouco depois para o usuário ver 100%
                 setTimeout(() => {
                     uploadProgressContainer.style.display = 'none';
                     uploadProgressText.style.display = 'none';
                 }, 500);
 
                 submitButton.disabled = false;
-                submitButton.innerHTML = 'Transcrever Áudio/Vídeo'; // Restaura texto original
+                submitButton.innerHTML = 'Transcrever Áudio/Vídeo';
 
-                if (xhr.status === 202) { // Accepted
+                if (xhr.status === 202) {
                     const response = JSON.parse(xhr.responseText);
                     addJobToList(response.job_id, response.filename, response.model_size, "Iniciado");
-                    monitorJobStatus(response.job_id);
+                    monitorJobStatus(response.job_id); // Inicia o monitoramento SSE
                 } else {
                     const errorResponse = JSON.parse(xhr.responseText);
-                    // Usar toast no futuro
                     alert(`Erro ao iniciar transcrição: ${errorResponse.error || xhr.statusText}`);
                     console.error('Erro no upload:', errorResponse);
                 }
@@ -125,8 +119,6 @@ document.addEventListener('DOMContentLoaded', () => {
             </div>
         `;
         jobsList.prepend(listItem); // Adiciona no início da lista
-        // Passar um objeto 'data' placeholder com progresso inicial.
-        // O status inicial é "Iniciado", então o progresso pode ser 0 ou um valor pequeno.
         updateJobStatusDisplay(jobId, initialStatus, [], {
             progress: {
                 percentage: 0,
@@ -135,30 +127,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateJobStatusDisplay(jobId, statusText, files = [], data = {}) { // data = {} é o default
+    function updateJobStatusDisplay(jobId, statusText, files = [], data = {}) {
         const jobElement = document.getElementById(`job-${jobId}`);
         if (!jobElement) return;
 
-        // Garante que data e data.progress existam antes de tentar acessá-los profundamente
         const currentProgress = (data && data.progress) ? data.progress : { percentage: 0, status_text: statusText };
 
         const statusBadgeElement = jobElement.querySelector('.status-badge');
         const spinnerElement = jobElement.querySelector('.spinner');
         const resultLinksDiv = jobElement.querySelector('.result-links');
-        // Elementos da barra de progresso da transcrição
         const transcriptionProgressContainer = jobElement.querySelector('.transcription-progress-container');
         const transcriptionProgressBar = jobElement.querySelector('.transcription-progress-bar');
         const transcriptionProgressText = jobElement.querySelector('.progress-status-text');
 
-        // Limpar classes de status antigas
         statusBadgeElement.classList.remove('status-initiated', 'status-processing', 'status-completed', 'status-error', 'status-not-found');
         statusBadgeElement.textContent = statusText;
 
-        // Atualizar barra de progresso da transcrição
         if ((statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado")) {
             transcriptionProgressContainer.style.display = 'block';
             transcriptionProgressBar.style.width = `${currentProgress.percentage}%`;
-            transcriptionProgressText.textContent = currentProgress.status_text || statusText; // Usa statusText principal se progress.status_text não existir
+            transcriptionProgressText.textContent = currentProgress.status_text || statusText;
         } else if (statusText.toLowerCase() === "concluído") {
             transcriptionProgressContainer.style.display = 'block';
             transcriptionProgressBar.style.width = '100%';
@@ -176,81 +164,80 @@ document.addEventListener('DOMContentLoaded', () => {
         } else if (statusText.toLowerCase() === "concluído") {
             statusBadgeElement.classList.add('status-completed');
             spinnerElement.style.display = 'none';
-            // A lógica da barra de progresso para "Concluído" já está acima
 
             if (files.length > 0) {
-                resultLinksDiv.innerHTML = '<strong>Downloads:</strong> '; // Limpa e recria
+                resultLinksDiv.innerHTML = '<strong>Downloads:</strong> ';
                 files.forEach(file => {
                     const link = document.createElement('a');
                     link.href = file.url;
-                    link.textContent = file.filename; // Ou file.type.toUpperCase()
+                    link.textContent = file.filename;
                     link.classList.add('download-link');
-                    // link.innerHTML = `<i class="fas fa-download"></i> ${file.type.toUpperCase()}`; // Exemplo com ícone
                     resultLinksDiv.appendChild(link);
                     resultLinksDiv.appendChild(document.createTextNode(' '));
                 });
                 resultLinksDiv.style.display = 'block';
             } else {
-                resultLinksDiv.style.display = 'none'; // Caso concluído mas sem arquivos (improvável)
+                resultLinksDiv.style.display = 'none';
             }
-            // Parar polling para este job
-            clearJobPolling(jobId);
         } else { // Erro, Não encontrado, etc.
             statusBadgeElement.classList.add(statusText.toLowerCase() === "não encontrado" ? 'status-not-found' : 'status-error');
-            spinnerElement.style.display = 'none'; // Esconder spinner
-            transcriptionProgressContainer.style.display = 'none'; // Esconder barra de progresso
+            spinnerElement.style.display = 'none';
+            transcriptionProgressContainer.style.display = 'none';
             resultLinksDiv.style.display = 'none';
-            // Parar polling para este job
-            clearJobPolling(jobId);
-        }
-    }
-
-    function clearJobPolling(jobId) {
-        if (pollingIntervals[jobId]) {
-            clearInterval(pollingIntervals[jobId]);
-            delete pollingIntervals[jobId];
-        }
-        monitoredJobs.delete(jobId);
-    }
-
-
-    async function fetchJobStatus(jobId) {
-        try {
-            const response = await fetch(`/status/${jobId}`);
-            if (response.ok) {
-                const data = await response.json();
-                // Passar o objeto data completo para updateJobStatusDisplay
-                updateJobStatusDisplay(jobId, data.status, data.files, data);
-            } else if (response.status === 404) {
-                updateJobStatusDisplay(jobId, "Não encontrado", [], { progress: { percentage: 0, status_text: "Job não encontrado." } });
-            } else {
-                console.error(`Erro HTTP ${response.status} ao buscar status para job ${jobId}: ${response.statusText}`);
-                // Opcional: não parar polling em erros genéricos de servidor, pode ser temporário
-                // updateJobStatusDisplay(jobId, "Erro no servidor"); // Poderia mostrar um status de erro temporário
-            }
-        } catch (error) {
-            console.error(`Erro de rede ao buscar status para job ${jobId}:`, error);
-            // Opcional: não parar polling em erros de rede
-            // updateJobStatusDisplay(jobId, "Erro de rede");
         }
     }
 
     function monitorJobStatus(jobId) {
-        console.log("monitorJobStatus chamado para job_id:", jobId); // DEBUG
-        console.log("monitoredJobs antes de adicionar:", Array.from(monitoredJobs)); // DEBUG
-        console.log("pollingIntervals[jobId] antes de setar:", pollingIntervals[jobId]); // DEBUG
+        console.log("monitorJobStatus chamado para job_id:", jobId);
 
-        if (monitoredJobs.has(jobId) && pollingIntervals[jobId]) {
-            console.log("Polling para job_id:", jobId, "já ativo. Retornando."); // DEBUG
-            return;
-        }
-        monitoredJobs.add(jobId);
+        const jobElement = document.getElementById(`job-${jobId}`);
+        if (!jobElement) return;
 
-        fetchJobStatus(jobId); // Chamada inicial
+        const eventSource = new EventSource(`/stream/${jobId}`);
 
-        console.log("Configurando setInterval para job_id:", jobId); // DEBUG
-        pollingIntervals[jobId] = setInterval(() => {
-            fetchJobStatus(jobId);
-        }, 5000);
+        eventSource.onmessage = function(event) {
+            const data = JSON.parse(event.data);
+            console.log('SSE Message:', data);
+
+            if (data.status === 'Processando') {
+                updateJobStatusDisplay(jobId, data.status, [], data);
+            } else if (data.status === 'Concluído') {
+                eventSource.close(); // Fechar a conexão SSE
+                updateJobStatusDisplay(jobId, data.status, data.files, data);
+            } else if (data.status === 'Não encontrado' || data.status === 'Erro') {
+                eventSource.close(); // Fechar a conexão SSE
+                updateJobStatusDisplay(jobId, data.status, [], data);
+            }
+        };
+
+        eventSource.onerror = function(err) {
+            console.error('EventSource failed:', err);
+            eventSource.close();
+            updateJobStatusDisplay(jobId, "Erro de comunicação", [], { progress: { status_text: "Erro de comunicação com o servidor." } });
+        };
     }
+
+    async function fetchConfig() {
+        try {
+            const response = await fetch('/config');
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            const config = await response.json();
+            console.log('Configurações carregadas:', config);
+            return config;
+        } catch (error) {
+            console.error('Erro ao carregar configurações:', error);
+            return {};
+        }
+    }
+
+    let config = {};
+    document.addEventListener('DOMContentLoaded', async () => {
+        config = await fetchConfig();
+        const maxFileSizeElement = document.getElementById('max-file-size');
+        if (maxFileSizeElement && config.max_file_size) {
+            maxFileSizeElement.textContent = `(Max: ${config.max_file_size})`;
+        }
+    });
 });

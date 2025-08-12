@@ -1,5 +1,4 @@
-# Estágio 1: Build - Instalar dependências
-FROM python:3.10-slim as builder
+FROM python:3.10-slim AS builder
 
 # Define o diretório de trabalho
 WORKDIR /app
@@ -20,19 +19,22 @@ FROM python:3.10-slim
 # Define o diretório de trabalho
 WORKDIR /app
 
-# Copia o ambiente virtual com as dependências do estágio de build
-COPY --from=builder /opt/venv /opt/venv
-
-# Copia o resto do código da aplicação
-COPY . .
+# Cria o usuário e garante que ele seja o dono do WORKDIR
+RUN useradd -m appuser && chown -R appuser:appuser /app
+USER appuser
 
 # Define o PATH para usar o ambiente virtual
 ENV PATH="/opt/venv/bin:$PATH"
 
+# Copia o ambiente virtual com as dependências do estágio de build
+COPY --from=builder --chown=appuser:appuser /opt/venv /opt/venv
+
+# Copia o resto do código da aplicação
+COPY --chown=appuser:appuser . .
+
 # Expõe a porta
 EXPOSE 5000
 
-# Comando para rodar a aplicação
-# Usar gunicorn como um servidor WSGI mais robusto para produção é uma boa prática,
-# mas para manter a simplicidade, continuamos com o servidor de desenvolvimento do Flask.
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0"]
+# Comando para rodar a aplicação com Gunicorn
+# Usamos 4 workers e um timeout de 120s. Ajuste conforme necessário.
+CMD ["gunicorn", "--workers", "4", "--timeout", "120", "--bind", "0.0.0.0:5000", "app:app"]

@@ -22,8 +22,7 @@ class Config:
     COMPOSE_PROJECT_NAME = os.getenv("COMPOSE_PROJECT_NAME", "transcribe")
     TRANSCRIPTION_TIMEOUT = int(os.environ.get('TRANSCRIPTION_TIMEOUT', 3600)) # 1 hora
 
-    # Configurações da UI
-    STATUS_POLL_INTERVAL = int(os.environ.get('STATUS_POLL_INTERVAL', 5000)) # 5 segundos
+    
 
     @staticmethod
     def init_app(app):

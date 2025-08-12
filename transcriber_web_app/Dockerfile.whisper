@@ -1,7 +1,7 @@
 # Estágio 1: Imagem Base com CUDA
 # Usamos a imagem oficial da NVIDIA com CUDA 12.1.1 e cuDNN 8 no Ubuntu 22.04.
 # A tag 'devel' inclui compiladores e headers necessários para construir pacotes Python que dependem de CUDA.
-FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
+FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04 AS builder
 
 # Define o frontend do apt para não interativo, evitando prompts durante o build.
 ENV DEBIAN_FRONTEND=noninteractive
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
-    && pip3 install --no-cache-dir -U openai-whisper
+    && pip3 install --no-cache-dir --timeout 600 -U openai-whisper
 
 # ---------------------------------------------------------------------------------
 # NOVO: Estágio 3: Pré-carregar o Modelo Whisper
@@ -33,7 +33,7 @@ RUN python3 -c "import whisper; print('Baixando e cacheando o modelo small...');
 # Estágio 4: Configuração do Ambiente da Aplicação
 # Copia o nosso script de transcrição para dentro da imagem.
 WORKDIR /app
-COPY transcribe.py .
+COPY --chown=appuser:appuser transcribe.py .
 
 # Define o diretório de trabalho padrão para a pasta de dados.
 # Isso torna a execução mais simples, pois estaremos no diretório montado.

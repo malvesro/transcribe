@@ -3,3 +3,4 @@ python-dotenv>=0.15
 requests>=2.20
 Werkzeug>=2.0
 docker>=6.0 # Adicionada a biblioteca Docker SDK para Python
+gunicorn>=21.2.0 # Servidor WSGI para produção
