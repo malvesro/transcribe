@@ -43,13 +43,25 @@ $SUDO_PREFIX $COMPOSE_CMD down
 
 echo -e "\n${BLUE}2. Removendo a imagem antiga do worker (se existir)...${NC}"
 # O comando 'docker rmi' pode falhar se a imagem não existir, então ignoramos o erro.
-$SUDO_PREFIX docker rmi transcriber-worker:1.1 >/dev/null 2>&1 || true
+$SUDO_PREFIX docker rmi transcriber-worker:1.3 >/dev/null 2>&1 || true
+
+
+# Verificar se o Docker tem suporte a NVIDIA
+if docker info | grep -i "runtimes.*nvidia" >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Suporte a GPU NVIDIA detectado no Docker!${NC}"
+    COMPOSE_FILES="-f docker-compose.yml -f docker-compose.gpu.yml"
+else
+    echo -e "${YELLOW}⚠️  Suporte a GPU NVIDIA não detectado no Docker.${NC}"
+    echo -e "ℹ️  O sistema rodará em modo CPU. Para ativar GPU, instale o 'nvidia-container-toolkit'."
+    COMPOSE_FILES="-f docker-compose.yml"
+fi
 
 echo -e "\n${BLUE}3. Forçando a reconstrução completa sem cache...${NC}"
-$SUDO_PREFIX $COMPOSE_CMD build --no-cache
+$SUDO_PREFIX $COMPOSE_CMD $COMPOSE_FILES build --no-cache
 
 echo -e "\n${BLUE}4. Iniciando os novos serviços...${NC}"
-$SUDO_PREFIX $COMPOSE_CMD up -d
+$SUDO_PREFIX $COMPOSE_CMD $COMPOSE_FILES up -d
+
 
 if [ $? -eq 0 ]; then
     echo -e "\n${GREEN}✅ Ambiente reconstruído e iniciado com sucesso!${NC}"

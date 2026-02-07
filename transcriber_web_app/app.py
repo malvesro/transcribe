@@ -1,13 +1,15 @@
 import os
 import uuid
 import logging
-import docker
-import threading
-import json
 import re
+import redis
+from rq import Queue
+from rq.job import Job
+from rq.exceptions import NoSuchJobError
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, send_from_directory
 from config import config
+
 
 # Configurar logging
 logging.basicConfig(
@@ -27,11 +29,11 @@ app.config.from_object(config[config_name])
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 os.makedirs(app.config['RESULTS_FOLDER'], exist_ok=True)
 
-# Verificar configuração do projeto Docker Compose
-if not app.config['COMPOSE_PROJECT_NAME']:
-    logger.warning("A variável de ambiente COMPOSE_PROJECT_NAME não está definida. A busca de container por label pode falhar.")
-else:
-    logger.info(f"Usando COMPOSE_PROJECT_NAME: '{app.config['COMPOSE_PROJECT_NAME']}'")
+# Configurar conexão Redis e Fila
+redis_url = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+conn = redis.from_url(redis_url)
+q = Queue(connection=conn)
+
 
 def allowed_file(filename):
     """Verifica se o arquivo tem extensão permitida e nome válido"""
@@ -67,43 +69,8 @@ def favicon():
     # Retorna 204 No Content para evitar erros 404 no console se não houver favicon
     return '', 204
 
-def run_transcription_in_thread(job_id, worker_container_name, transcribe_command_list):
-    """
-    Executa o comando de transcrição em uma thread separada.
-    Loga stdout, stderr e o código de saída do processo worker.
-    """
-    try:
-        client = docker.from_env()
-        worker_container = client.containers.get(worker_container_name)
+# Função run_transcription_in_thread removida pois agora usamos RQ
 
-        logger.info(f"THREAD JOB_ID: {job_id} - Iniciando execução de exec_run no worker '{worker_container_name}'...")
-
-        exec_result = worker_container.exec_run(
-            transcribe_command_list,
-            tty=False,
-            demux=True
-        )
-        exit_code = exec_result.exit_code
-        stdout_bytes = exec_result.output[0]
-        stderr_bytes = exec_result.output[1]
-
-        stdout = stdout_bytes.decode('utf-8', errors='replace') if stdout_bytes else ""
-        stderr = stderr_bytes.decode('utf-8', errors='replace') if stderr_bytes else ""
-
-        logger.info(f"THREAD JOB_ID: {job_id} - Comando exec_run finalizado no worker '{worker_container_name}'.")
-        logger.info(f"THREAD JOB_ID: {job_id} - Return Code do worker: {exit_code}")
-        if stdout:
-            logger.info(f"THREAD JOB_ID: {job_id} - STDOUT do worker:\n{stdout}")
-        if stderr:
-            logger.error(f"THREAD JOB_ID: {job_id} - STDERR do worker:\n{stderr}")
-
-        if exit_code != 0:
-            logger.error(f"THREAD JOB_ID: {job_id} - Comando no worker falhou.")
-        else:
-            logger.info(f"THREAD JOB_ID: {job_id} - Comando executado com sucesso pelo worker.")
-
-    except Exception as e:
-        logger.error(f"THREAD JOB_ID: {job_id} - Erro na thread de transcrição: {e}", exc_info=True)
 
 @app.route('/upload_and_transcribe', methods=['POST'])
 def upload_and_transcribe():
@@ -135,49 +102,29 @@ def upload_and_transcribe():
         job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
         os.makedirs(job_results_path_in_app, exist_ok=True)
 
-        video_path_in_worker = os.path.join(app.config['WORKER_VIDEOS_FOLDER'], filename)
-        output_dir_in_worker = os.path.join(app.config['WORKER_RESULTS_FOLDER'], job_id)
-
-        transcribe_command = [
-            "python3", "/app/transcribe.py",
-            "--video", video_path_in_worker,
-            "--model", model_size,
-            "--output_dir", output_dir_in_worker
-        ]
-
-        cmd_string_for_log = ' '.join(transcribe_command)
-        logger.info(f"JOB_ID: {job_id} - Comando a ser executado no worker: {cmd_string_for_log}")
+        # Caminhos para o worker (ele monta /data mapeado para ./transcriber_web_app)
+        # No docker-compose:
+        # - ./transcriber_web_app/videos:/data/videos
+        # - ./transcriber_web_app/results:/data/results
+        
+        # O arquivo foi salvo em app.config['UPLOAD_FOLDER'] que é ./transcriber_web_app/videos
+        # Então para o worker, o caminho é /data/videos/filename
+        
+        video_path_in_worker = os.path.join('/data/videos', filename)
+        output_dir_in_worker = os.path.join('/data/results', job_id)
 
         try:
-            client = docker.from_env()
-            
-            if not app.config['COMPOSE_PROJECT_NAME']:
-                logger.error(f"JOB_ID: {job_id} - COMPOSE_PROJECT_NAME não está definido. Não é possível encontrar o worker por label.")
-                return jsonify({"error": "Configuração do servidor incompleta: nome do projeto Docker não definido."}), 500
+            # Enfileirar job no Redis
+            # Usamos string 'transcribe.transcribe_video' para evitar importar o módulo aqui (que depende de torch)
+            job = q.enqueue(
+                'transcribe.transcribe_video',
+                args=(video_path_in_worker, model_size, output_dir_in_worker),
+                job_id=job_id,
+                timeout=app.config.get('TRANSCRIPTION_TIMEOUT', 3600),
+                result_ttl=86400 # Manter resultado por 24h
+            )
 
-            filters = {
-                "label": [
-                    f"com.docker.compose.project={app.config['COMPOSE_PROJECT_NAME']}",
-                    f"com.docker.compose.service={app.config['WHISPER_WORKER_SERVICE_NAME']}"
-                ]
-            }
-            worker_containers = client.containers.list(all=True, filters=filters)
-
-            if not worker_containers:
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' para o projeto '{app.config['COMPOSE_PROJECT_NAME']}' não encontrado.")
-                return jsonify({"error": f"Container do worker '{app.config['WHISPER_WORKER_SERVICE_NAME']}' não encontrado."}), 500
-
-            worker_container_obj = worker_containers[0]
-            if worker_container_obj.status != "running":
-                logger.error(f"JOB_ID: {job_id} - Container do worker '{worker_container_obj.name}' encontrado, mas não está em execução. Status: {worker_container_obj.status}")
-                return jsonify({"error": f"Container do worker '{worker_container_obj.name}' não está em execução (status: {worker_container_obj.status})."}), 500
-
-            logger.info(f"JOB_ID: {job_id} - Iniciando thread para executar comando no container worker '{worker_container_obj.name}'...")
-
-            # Executar em uma thread para não bloquear a requisição Flask
-            thread = threading.Thread(target=run_transcription_in_thread, args=(job_id, worker_container_obj.name, transcribe_command))
-            thread.daemon = True
-            thread.start()
+            logger.info(f"Job {job_id} enfileirado com sucesso. Posição na fila: {len(q)}")
 
             return jsonify({
                 "message": "Transcrição iniciada em background.",
@@ -186,15 +133,10 @@ def upload_and_transcribe():
                 "model_size": model_size
             }), 202
 
-        except docker.errors.NotFound:
-            logger.error(f"JOB_ID: {job_id} - Container do worker não encontrado via API Docker.", exc_info=True)
-            return jsonify({"error": "Container do worker não encontrado."}), 500
-        except docker.errors.APIError as e_api:
-            logger.error(f"JOB_ID: {job_id} - Erro na API Docker: {e_api}", exc_info=True)
-            return jsonify({"error": f"Erro na API Docker: {str(e_api)}"}), 500
         except Exception as e:
-            logger.error(f"JOB_ID: {job_id} - Erro inesperado ao tentar iniciar a transcrição via API Docker: {e}", exc_info=True)
-            return jsonify({"error": f"Falha inesperada durante a chamada da transcrição: {str(e)}"}), 500
+            logger.error(f"JOB_ID: {job_id} - Erro ao enfileirar job: {e}", exc_info=True)
+            return jsonify({"error": f"Falha ao iniciar transcrição: {str(e)}"}), 500
+
     else:
         logger.warning(f"Tentativa de upload de tipo de arquivo não permitido: {file.filename}")
         return jsonify({"error": "Tipo de arquivo não permitido"}), 400
@@ -208,52 +150,76 @@ def get_status(job_id):
     
     job_results_path_in_app = os.path.join(app.config['RESULTS_FOLDER'], job_id)
 
-    if not os.path.exists(job_results_path_in_app):
-        logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não encontrado em '{job_results_path_in_app}'.")
-        return jsonify({"job_id": job_id, "status": "Não encontrado", "files": []}), 404
-
-    output_files = []
     try:
-        if not os.path.isdir(job_results_path_in_app):
-            logger.debug(f"JOB_ID: {job_id} - Status check: Diretório de resultados não é um diretório válido em '{job_results_path_in_app}'.")
-            return jsonify({"job_id": job_id, "status": "Erro (caminho inválido)", "files": []}), 404
+        try:
+            job = Job.fetch(job_id, connection=conn)
+        except NoSuchJobError:
+            logger.debug(f"JOB_ID: {job_id} - Job não encontrado no Redis.")
+            # Se não está no Redis, pode ter expirado ou nunca existiu.
+            # Mas verificamos se os arquivos existem (caso tenha expirado do Redis mas os arquivos persistam)
+            if os.path.exists(job_results_path_in_app) and os.listdir(job_results_path_in_app):
+                 # Lógica abaixo para listar arquivos
+                 pass
+            else:
+                return jsonify({"job_id": job_id, "status": "Não encontrado", "files": []}), 404
 
-        for f_name in os.listdir(job_results_path_in_app):
-            if f_name.endswith((".txt", ".srt", ".vtt")):
-                file_type = f_name.rsplit('.', 1)[1].lower()
-                output_files.append({
-                    "type": file_type,
-                    "filename": f_name,
-                    "url": f"/results/{job_id}/{f_name}"
-                })
+        # Verificar status do job
+        rq_status = job.get_status() if 'job' in locals() else None
+        progress_data = {"percentage": 0, "status_text": "Aguardando..."}
+        
+        if 'job' in locals() and job.meta.get('progress'):
+            progress_data = job.meta['progress']
+        
+        # Mapear status do RQ para status da nossa API
+        api_status = "Processando"
+        if rq_status == 'queued':
+            api_status = "Iniciado" # Ou "Na fila"
+            # Só chamar get_position se job existe
+            if 'job' in locals():
+                progress_data["status_text"] = f"Na fila (Posição: {job.get_position() + 1})"
+            else:
+                progress_data["status_text"] = "Na fila"
+        elif rq_status == 'started':
+            api_status = "Processando"
+        elif rq_status == 'finished':
+            api_status = "Concluído"
+            progress_data["percentage"] = 100
+            progress_data["status_text"] = "Concluído"
+        elif rq_status == 'failed':
+            api_status = "Erro"
+            progress_data["status_text"] = "Falha na transcrição"
+        
+        # Verificar arquivos resultantes
+        output_files = []
+        if os.path.exists(job_results_path_in_app):
+             for f_name in os.listdir(job_results_path_in_app):
+                if f_name.endswith((".txt", ".srt", ".vtt")):
+                    file_type = f_name.rsplit('.', 1)[1].lower()
+                    output_files.append({
+                        "type": file_type,
+                        "filename": f_name,
+                        "url": f"/results/{job_id}/{f_name}"
+                    })
 
-        if not output_files:
-            logger.debug(f"JOB_ID: {job_id} - Status check: Processando, nenhum arquivo de resultado encontrado em '{job_results_path_in_app}'.")
-            # Ler informações de progresso se estiver processando
-            progress_data = {"percentage": 0, "status_text": "Processando..."}
-            progress_file_path = os.path.join(job_results_path_in_app, "_progress.json")
-            if os.path.exists(progress_file_path):
-                try:
-                    with open(progress_file_path, 'r', encoding='utf-8') as pf:
-                        progress_info = json.load(pf)
-                        progress_data["percentage"] = progress_info.get("percentage", 0)
-                        progress_data["status_text"] = progress_info.get("status_text", "Processando...")
-                    logger.debug(f"JOB_ID: {job_id} - Progresso lido: {progress_data}")
-                except Exception as e_progress:
-                    logger.error(f"JOB_ID: {job_id} - Erro ao ler arquivo de progresso '{progress_file_path}': {e_progress}")
-            return jsonify({"job_id": job_id, "status": "Processando", "files": [], "progress": progress_data})
-        else:
-            logger.info(f"JOB_ID: {job_id} - Status check: Concluído. Arquivos: {[f['filename'] for f in output_files]}.")
-            # Se concluído, o progresso é 100%
-            progress_data = {"percentage": 100, "status_text": "Concluído"}
-            return jsonify({"job_id": job_id, "status": "Concluído", "files": output_files, "progress": progress_data})
+        # Se o job terminou com sucesso mas não achou arquivos (estranho, mas possível)
+        if api_status == "Concluído" and not output_files:
+             logger.warning(f"JOB_ID: {job_id} - Status Concluído mas sem arquivos.")
+        
+        # Se o job falhou, retornar erro
+        if api_status == "Erro":
+             return jsonify({"job_id": job_id, "status": "Erro", "files": [], "progress": progress_data}), 200 # Retorna 200 com status Erro para o front lidar
 
-    except FileNotFoundError:
-        logger.warning(f"JOB_ID: {job_id} - Status check: Diretório de resultados desapareceu de '{job_results_path_in_app}'.")
-        return jsonify({"job_id": job_id, "status": "Erro (diretório sumiu)", "files": []}), 404
+        return jsonify({
+            "job_id": job_id, 
+            "status": api_status, 
+            "files": output_files, 
+            "progress": progress_data
+        })
+
     except Exception as e:
-        logger.error(f"JOB_ID: {job_id} - Status check: Erro ao verificar status em '{job_results_path_in_app}': {e}", exc_info=True)
+        logger.error(f"JOB_ID: {job_id} - Status check: Erro ao verificar status: {e}", exc_info=True)
         return jsonify({"error": f"Erro ao obter status: {str(e)}"}), 500
+
 
 @app.route('/results/<job_id>/<filename>', methods=['GET'])
 def serve_result_file(job_id, filename):

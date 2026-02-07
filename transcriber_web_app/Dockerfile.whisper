@@ -10,7 +10,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 # - Atualiza os pacotes e instala python3, pip e git.
 # - ffmpeg é CRÍTICO para o Whisper poder ler arquivos de áudio e vídeo como MP4.
 # - Instala o PyTorch com suporte para CUDA 12.1.
-# - Instala a última versão do openai-whisper.
+# - Instala openai-whisper versão 20250625 (mais recente).
 # - Limpa o cache do apt para reduzir o tamanho da imagem.
 RUN apt-get update && apt-get install -y \
     python3.10 \
@@ -20,7 +20,7 @@ RUN apt-get update && apt-get install -y \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/* \
     && pip3 install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121 \
-    && pip3 install --no-cache-dir -U openai-whisper
+    && pip3 install --no-cache-dir openai-whisper==20250625 redis rq ffmpeg-python
 
 # ---------------------------------------------------------------------------------
 # NOVO: Estágio 3: Pré-carregar o Modelo Whisper
@@ -34,6 +34,7 @@ RUN python3 -c "import whisper; print('Baixando e cacheando o modelo small...');
 # Copia o nosso script de transcrição para dentro da imagem.
 WORKDIR /app
 COPY transcribe.py .
+COPY worker.py .
 
 # Define o diretório de trabalho padrão para a pasta de dados.
 # Isso torna a execução mais simples, pois estaremos no diretório montado.

@@ -8,18 +8,22 @@ services:
     volumes:
       - ./transcriber_web_app/videos:/app/videos
       - ./transcriber_web_app/results:/app/results
-      - /var/run/docker.sock:/var/run/docker.sock
+
     environment:
       - FLASK_APP=app.py
       - FLASK_ENV=development
-      - DOCKER_COMPOSE_PROJECT_NAME=${COMPOSE_PROJECT_NAME}
+      - REDIS_URL=redis://redis:6379/0
+
     depends_on:
+      - redis
       - whisper_worker
+
     networks:
       - transcriber_network
 
   whisper_worker:
-    image: transcriber-worker:1.2
+    image: transcriber-worker:1.3
+
     build:
       context: ./transcriber_web_app
       dockerfile: Dockerfile.whisper
@@ -27,22 +31,26 @@ services:
       - ./transcriber_web_app/videos:/data/videos:ro
       - ./transcriber_web_app/results:/data/results
       - whisper_models:/root/.cache/whisper
-    # Para GPU (NVIDIA):
-    # Esta configuração requer que o NVIDIA Container Toolkit esteja instalado
-    # e configurado corretamente no sistema host.
-    # Se a GPU não for detectada, verifique a instalação do Toolkit.
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: all
-              capabilities: [gpu]
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    command: python3 /app/worker.py
+
+    # Configuração de GPU movida para docker-compose.gpu.yml para evitar erros em sistemas sem GPU.
+    # O script de inicialização (start.bat / start-whisper.sh) detectará automaticamente se deve usar a GPU.
+
+    networks:
+      - transcriber_network
+
+  redis:
+    image: redis:alpine
+    ports:
+      - "6379:6379"
     networks:
       - transcriber_network
 
 volumes:
   whisper_models:
+
 
 networks:
   transcriber_network:

@@ -33,7 +33,20 @@ if ! $COMPOSE_CMD ps >/dev/null 2>&1; then
 fi
 
 # Iniciar os containers
-$SUDO_PREFIX $COMPOSE_CMD up --build -d
+# Verificar se o Docker tem suporte a NVIDIA
+if docker info | grep -i "runtimes.*nvidia" >/dev/null 2>&1; then
+    echo -e "${GREEN}✅ Suporte a GPU NVIDIA detectado no Docker!${NC}"
+    COMPOSE_FILES="-f docker-compose.yml -f docker-compose.gpu.yml"
+else
+    echo -e "${YELLOW}⚠️  Suporte a GPU NVIDIA não detectado no Docker.${NC}"
+    echo -e "ℹ️  O sistema rodará em modo CPU. Para ativar GPU, instale o 'nvidia-container-toolkit'."
+    COMPOSE_FILES="-f docker-compose.yml"
+fi
+
+# Iniciar os containers com a configuração apropriada
+echo -e "${BLUE}Iniciando containers...${NC}"
+$SUDO_PREFIX $COMPOSE_CMD $COMPOSE_FILES up --build -d
+
 
 if [ $? -eq 0 ]; then
     echo -e "${GREEN}✅ Whisper Transcriber iniciado com sucesso!${NC}"
