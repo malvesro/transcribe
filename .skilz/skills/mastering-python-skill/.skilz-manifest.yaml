@@ -1,0 +1,7 @@
+installed_at: 2026-02-07T19:00:31Z
+skill_id: local/mastering-python-skill
+git_repo: local
+skill_path: /home/rosner/projetosgit/transcribe/.skilz/skills/mastering-python-skill
+git_sha: local-dev
+skilz_version: 1.0.0
+install_mode: local-dev

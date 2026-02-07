@@ -1,0 +1,42 @@
+{
+  "_manifest": {
+    "version": "4.1.0",
+    "updated_at": "2026-02-06",
+    "purpose": "Define a física e a ética dos modelos de IA para o projeto Mercúrio (TSE)."
+  },
+
+  "infrastructure_settings": {
+    "_doc": "Configurações globais que afetam como a IDE e os scripts CLI interagem com a API.",
+    "strict_mode": true,
+    "_strict_mode_comment": "Força o uso destes parâmetros, ignorando preferências pessoais do dev.",
+    "environment": "production-grade"
+  },
+
+  "generation_constraints": {
+    "_doc": "Hiperparâmetros que controlam a criatividade vs. precisão da IA.",
+
+    "temperature": 0.1,
+    "_temperature_comment": "0.1 = Determinismo quase total (Anti-Alucinação). Ideal para Java/Spring.",
+
+    "top_p": 0.95,
+    "_top_p_comment": "Nucleus Sampling. Elimina escolhas de sintaxe improváveis.",
+
+    "max_output_tokens": 65536,
+    "_max_output_tokens_comment": "Ajustado para Gemini 3.0 Pro e GPT-5.2. Permite gerar módulos inteiros sem cortes.",
+
+    "stop_sequences": ["<|endoftext|>", "User:", "Dica:"]
+  },
+
+  "model_routing": {
+    "_doc": "Orquestração de Modelos 2026.",
+    "openai_primary": "gpt-5.2-codex",
+    "google_primary": "gemini-3.0-pro-preview",
+    "fallback": "gpt-4o-2025-hybrid"
+  },
+
+  "context_grounding": {
+    "system_instruction_path": "./AGENTS.md",
+    "skills_registry_path": "./skills/registry.json",
+    "compliance_docs": ["./diretrizes/arquitetura-tse.md"]
+  }
+}
