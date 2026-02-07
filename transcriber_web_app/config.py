@@ -12,6 +12,7 @@ class Config:
 
     # Configurações de arquivo
     ALLOWED_EXTENSIONS = {'mp4', 'm4a', 'mp3', 'wav', 'mov', 'avi', 'flac', 'ogg', 'aac'}
+    WHISPER_ALLOWED_MODELS = {"tiny", "base", "small", "medium", "large", "large-v2", "large-v3"}
     MAX_FILENAME_LENGTH = 255
     MAX_FILE_SIZE_GB = int(os.environ.get('MAX_FILE_SIZE_GB', 15))
     MAX_CONTENT_LENGTH = MAX_FILE_SIZE_GB * 1024 * 1024 * 1024

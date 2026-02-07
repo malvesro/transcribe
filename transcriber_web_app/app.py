@@ -81,6 +81,11 @@ def upload_and_transcribe():
     file = request.files['videoFile']
     model_size = request.form.get('modelSize', 'small')
 
+    # Validar model_size contra os modelos Whisper permitidos
+    if model_size not in app.config['WHISPER_ALLOWED_MODELS']:
+        logger.warning(f"Tamanho de modelo Whisper não permitido: {model_size}")
+        return jsonify({"error": "Tamanho de modelo Whisper não permitido"}), 400
+
     if file.filename == '':
         logger.warning("Nome de arquivo vazio selecionado.")
         return jsonify({"error": "Nenhum arquivo selecionado"}), 400
