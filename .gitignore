@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+*.egg-info/
+.tox/
+.mypy_cache/
+.pytest_cache/
+
+# Docker
+*.log
+
+# Application specific
+transcriber_web_app/results/
+transcriber_web_app/videos/
