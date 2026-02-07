@@ -155,17 +155,24 @@ document.addEventListener('DOMContentLoaded', () => {
         statusBadgeElement.textContent = statusText;
 
         // Atualizar barra de progresso da transcrição
-        if ((statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado")) {
+        const statusLower = statusText.toLowerCase();
+        const isActiveJob = (statusLower === "processando" || statusLower === "iniciado" || statusLower === "na fila");
+        const isCompleted = statusLower === "concluído";
+
+        if (isActiveJob) {
             transcriptionProgressContainer.style.display = 'block';
-            transcriptionProgressBar.style.width = `${currentProgress.percentage}%`;
-            transcriptionProgressText.textContent = currentProgress.status_text || statusText; // Usa statusText principal se progress.status_text não existir
-        } else if (statusText.toLowerCase() === "concluído") {
+            const percentage = currentProgress.percentage || 0;
+            transcriptionProgressBar.style.width = `${percentage}%`;
+            transcriptionProgressText.textContent = currentProgress.status_text || statusText;
+            console.log(`Progress update for ${jobId}: ${percentage}% - ${currentProgress.status_text}`); // DEBUG
+        } else if (isCompleted) {
             transcriptionProgressContainer.style.display = 'block';
             transcriptionProgressBar.style.width = '100%';
             transcriptionProgressText.textContent = "Concluído!";
         } else {
             transcriptionProgressContainer.style.display = 'none';
         }
+
 
         if (statusText.toLowerCase() === "processando" || statusText.toLowerCase() === "iniciado") {
             statusBadgeElement.classList.add(statusText.toLowerCase() === "processando" ? 'status-processing' : 'status-initiated');
@@ -251,6 +258,7 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Configurando setInterval para job_id:", jobId); // DEBUG
         pollingIntervals[jobId] = setInterval(() => {
             fetchJobStatus(jobId);
-        }, 5000);
+        }, 2000); // Poll a cada 2 segundos para progresso mais responsivo
+
     }
 });
