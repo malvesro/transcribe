@@ -37,6 +37,6 @@
   "context_grounding": {
     "system_instruction_path": "./AGENTS.md",
     "skills_registry_path": "./skills/registry.json",
-    "compliance_docs": ["./diretrizes/arquitetura-tse.md"]
+    "compliance_docs": ["./diretrizes/arquitetura.md"]
   }
 }
