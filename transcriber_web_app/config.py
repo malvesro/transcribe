@@ -22,6 +22,7 @@ class Config:
     WHISPER_WORKER_SERVICE_NAME = "whisper_worker"
     COMPOSE_PROJECT_NAME = os.getenv("COMPOSE_PROJECT_NAME", "transcribe")
     TRANSCRIPTION_TIMEOUT = int(os.environ.get('TRANSCRIPTION_TIMEOUT', 3600)) # 1 hora
+    DEFAULT_JOB_RETRIES = int(os.environ.get('DEFAULT_JOB_RETRIES', 3))
 
     # Configurações da UI
     STATUS_POLL_INTERVAL = int(os.environ.get('STATUS_POLL_INTERVAL', 5000)) # 5 segundos

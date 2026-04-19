@@ -6,6 +6,7 @@ import redis
 from rq import Queue
 from rq.job import Job
 from rq.exceptions import NoSuchJobError
+from rq import Retry
 from werkzeug.utils import secure_filename
 from flask import Flask, request, jsonify, send_from_directory
 from config import config
@@ -126,7 +127,8 @@ def upload_and_transcribe():
                 args=(video_path_in_worker, model_size, output_dir_in_worker),
                 job_id=job_id,
                 timeout=app.config.get('TRANSCRIPTION_TIMEOUT', 3600),
-                result_ttl=86400 # Manter resultado por 24h
+                result_ttl=86400, # Manter resultado por 24h
+                retry=Retry(max=app.config['DEFAULT_JOB_RETRIES'], interval=[10, 30])  # Retenta após 10s, depois 30s
             )
 
             logger.info(f"Job {job_id} enfileirado com sucesso. Posição na fila: {len(q)}")
