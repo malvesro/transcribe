@@ -26,9 +26,9 @@ Premissas de compatibilidade (críticas):
 
 ### Fase 1: Estabilização e Correções de Infraestrutura (IMEDIATA)
 
-1. **[Pendente] Corrigir Mecanismo de Retentativas do RQ:** Investigar por que o `Worker` não está processando as retentativas mesmo com o objeto `Retry` configurado.
-   - Subtarefa: Verificar se o `Worker` precisa ser iniciado com a flag `--with-scheduler`.
-   - Subtarefa: Testar se a retentativa funciona com um job simples de erro.
+1. **[Concluído] Corrigir Mecanismo de Retentativas do RQ:** Investigar por que o `Worker` não está processando as retentativas mesmo com o objeto `Retry` configurado.
+   - Subtarefa: [Concluído] Verificar se o `Worker` precisa ser iniciado com a flag `--with-scheduler`.
+   - Subtarefa: [Pendente] Testar se a retentativa funciona com um job simples de erro em ambiente Docker completo.
 2. **[Pendente] Validar Dead-Letter Queue (DLQ):** Garantir que jobs que excedam o número de retentativas sejam movidos para a `failed queue` e possam ser inspecionados.
 3. **[Pendente] Limpeza de Código de Teste:** Remover o erro simulado em `transcriber_web_app/transcribe.py` após validar as retentativas.
 
@@ -40,3 +40,4 @@ Premissas de compatibilidade (críticas):
 ## Registro de Avanços
 
 * 2026-04-19: Início da análise da branch `docs-review-and-corrections`. Identificada necessidade de focar na correção do RQ.
+* 2026-04-19: Corrigido `worker.py` para ativar scheduler integrado (`with_scheduler=True`). Criado log de sessão e script de teste manual.
