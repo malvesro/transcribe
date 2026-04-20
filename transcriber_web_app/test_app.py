@@ -101,6 +101,21 @@ class TestRoutes(TranscriberTestCase):
         response = self.client.get(f'/status/{fake_uuid}')
         self.assertEqual(response.status_code, 404)
 
+    @patch('app.Job.fetch')
+    @patch('app.redis.from_url')
+    def test_status_failed_job(self, mock_redis, mock_job_fetch):
+        """Testa status de job que falhou"""
+        mock_job = MagicMock()
+        mock_job.get_status.return_value = 'failed'
+        mock_job.meta = {'progress': {'percentage': 0, 'status_text': 'Falha na transcrição'}}
+        mock_job_fetch.return_value = mock_job
+
+        fake_uuid = '12345678-1234-5678-9012-123456789012'
+        response = self.client.get(f'/status/{fake_uuid}')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['status'], 'Erro')
+
 class TestUpload(TranscriberTestCase):
     """Testes para upload de arquivos"""
 

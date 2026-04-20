@@ -29,9 +29,9 @@ Premissas de compatibilidade (críticas):
 1. **[Concluído] Corrigir Mecanismo de Retentativas do RQ:** Investigar por que o `Worker` não está processando as retentativas mesmo com o objeto `Retry` configurado.
    - Subtarefa: [Concluído] Verificar se o `Worker` precisa ser iniciado com a flag `--with-scheduler`.
    - Subtarefa: [Pendente] Testar se a retentativa funciona com um job simples de erro em ambiente Docker completo.
-2. **[Em Progresso] Refatorar Suíte de Testes:** Ajustar `test_app.py` para mockar corretamente Redis e RQ, removendo dependência do Docker SDK obsoleto.
+2. **[Concluído] Refatorar Suíte de Testes:** Ajustar `test_app.py` para mockar corretamente Redis e RQ, removendo dependência do Docker SDK obsoleto.
 3. **[Pendente] Validar Dead-Letter Queue (DLQ):** Garantir que jobs que excedam o número de retentativas sejam movidos para a `failed queue` e possam ser inspecionados.
-4. **[Pendente] Limpeza de Código de Teste:** Remover o erro simulado em `transcriber_web_app/transcribe.py` após validar as retentativas.
+4. **[Em Progresso] Limpeza de Código de Teste:** Remover o erro simulado em `transcriber_web_app/transcribe.py` após validar as retentativas.
 
 ### Fase 2: Melhorias de Segurança e UX
 

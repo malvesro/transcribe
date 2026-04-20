@@ -82,7 +82,6 @@ def save_transcription(result, video_path, output_dir=None):
 
 def transcribe_video(video_path, model_name="small", output_dir=None):
     """Função principal chamada pelo Worker"""
-    raise Exception("Erro simulado de transcrição!") # <-- Adicionar esta linha
     print(f"Iniciando transcrição de '{video_path}' com modelo '{model_name}'...")
     
     # Verificação da GPU
