@@ -1,21 +1,7 @@
 #!/usr/bin/env python3
 """
-Testes unitários completos para a aplicação Whisper Transcriber
-
-Este arquivo contém testes que podem requerer Docker para funcionalidade completa.
-Para testes que funcionam sem Docker, veja test_local.py
-
-Categorias de teste:
-- TestFileValidation: Validação de arquivos e extensões
-- TestRoutes: Testes de rotas e endpoints da API
-- TestUpload: Upload de arquivos e integração com Docker
-- TestSecurity: Testes de segurança e validação
-- TestConfiguration: Testes de configuração da aplicação
-
-Execução:
-    python test_app.py
-    python -m pytest test_app.py -v
-    python ../run_tests.py --full
+Testes unitários refatorados para a aplicação Whisper Transcriber.
+Mocks aprimorados para Redis e RQ para permitir execução sem infraestrutura externa.
 """
 import unittest
 import tempfile
@@ -24,6 +10,7 @@ import json
 from unittest.mock import patch, MagicMock
 from app import app, allowed_file
 from config import Config
+from rq.exceptions import NoSuchJobError
 
 class TranscriberTestCase(unittest.TestCase):
     """Classe base para testes da aplicação"""
@@ -38,8 +25,11 @@ class TranscriberTestCase(unittest.TestCase):
 
     def tearDown(self):
         """Limpeza após cada teste"""
-        # Limpar diretórios temporários se necessário
-        pass
+        import shutil
+        if os.path.exists(self.app.config['UPLOAD_FOLDER']):
+            shutil.rmtree(self.app.config['UPLOAD_FOLDER'])
+        if os.path.exists(self.app.config['RESULTS_FOLDER']):
+            shutil.rmtree(self.app.config['RESULTS_FOLDER'])
 
 class TestFileValidation(TranscriberTestCase):
     """Testes para validação de arquivos"""
@@ -97,13 +87,34 @@ class TestRoutes(TranscriberTestCase):
         for job_id in invalid_ids:
             with self.subTest(job_id=job_id):
                 response = self.client.get(f'/status/{job_id}')
-                self.assertEqual(response.status_code, 400)
+                if '..' in job_id:
+                    self.assertEqual(response.status_code, 404)
+                else:
+                    self.assertEqual(response.status_code, 400)
 
-    def test_status_nonexistent_job(self):
-        """Testa status de job que não existe"""
+    @patch('app.Job.fetch')
+    @patch('app.redis.from_url')
+    def test_status_nonexistent_job(self, mock_redis, mock_job_fetch):
+        """Testa status de job que não existe no Redis"""
+        mock_job_fetch.side_effect = NoSuchJobError()
         fake_uuid = '12345678-1234-5678-9012-123456789012'
         response = self.client.get(f'/status/{fake_uuid}')
         self.assertEqual(response.status_code, 404)
+
+    @patch('app.Job.fetch')
+    @patch('app.redis.from_url')
+    def test_status_failed_job(self, mock_redis, mock_job_fetch):
+        """Testa status de job que falhou"""
+        mock_job = MagicMock()
+        mock_job.get_status.return_value = 'failed'
+        mock_job.meta = {'progress': {'percentage': 0, 'status_text': 'Falha na transcrição'}}
+        mock_job_fetch.return_value = mock_job
+
+        fake_uuid = '12345678-1234-5678-9012-123456789012'
+        response = self.client.get(f'/status/{fake_uuid}')
+        self.assertEqual(response.status_code, 200)
+        data = json.loads(response.data)
+        self.assertEqual(data['status'], 'Erro')
 
 class TestUpload(TranscriberTestCase):
     """Testes para upload de arquivos"""
@@ -117,41 +128,32 @@ class TestUpload(TranscriberTestCase):
 
     def test_upload_empty_filename(self):
         """Testa upload com nome de arquivo vazio"""
-        data = {'videoFile': (open(__file__, 'rb'), '')}
+        data = {'videoFile': (MagicMock(), '')}
         response = self.client.post('/upload_and_transcribe', data=data)
         self.assertEqual(response.status_code, 400)
 
-    @patch('app.docker.from_env')
-    def test_upload_valid_file(self, mock_docker):
+    @patch('app.len')
+    @patch('app.q.enqueue')
+    @patch('app.redis.from_url')
+    def test_upload_valid_file(self, mock_redis, mock_enqueue, mock_len):
         """Testa upload de arquivo válido"""
-        # Mock do Docker client
-        mock_client = MagicMock()
-        mock_container = MagicMock()
-        mock_container.status = 'running'
-        mock_container.name = 'test_worker'
-        mock_client.containers.list.return_value = [mock_container]
-        mock_docker.return_value = mock_client
+        mock_job = MagicMock()
+        mock_job.id = '12345678-1234-5678-9012-123456789012'
+        mock_enqueue.return_value = mock_job
+        mock_len.return_value = 1
 
-        # Criar arquivo temporário para teste
-        with tempfile.NamedTemporaryFile(suffix='.mp4', delete=False) as tmp_file:
-            tmp_file.write(b'fake video content')
-            tmp_file.flush()
+        from io import BytesIO
+        data = {
+            'videoFile': (BytesIO(b"fake content"), 'test_video.mp4'),
+            'modelSize': 'small'
+        }
+        response = self.client.post('/upload_and_transcribe',
+                                    data=data,
+                                    content_type='multipart/form-data')
 
-            with open(tmp_file.name, 'rb') as test_file:
-                data = {
-                    'videoFile': (test_file, 'test_video.mp4'),
-                    'modelSize': 'small'
-                }
-                response = self.client.post('/upload_and_transcribe',
-                                          data=data,
-                                          content_type='multipart/form-data')
-
-                # Deve retornar 202 (Accepted) se tudo estiver configurado
-                # ou 500 se houver problemas de configuração
-                self.assertIn(response.status_code, [202, 500])
-
-        # Limpar arquivo temporário
-        os.unlink(tmp_file.name)
+        self.assertEqual(response.status_code, 202)
+        json_data = json.loads(response.data)
+        self.assertEqual(json_data['filename'], 'test_video.mp4')
 
 class TestSecurity(TranscriberTestCase):
     """Testes de segurança"""
@@ -169,8 +171,7 @@ class TestSecurity(TranscriberTestCase):
         for malicious_path in malicious_paths:
             with self.subTest(path=malicious_path):
                 response = self.client.get(f'/results/{fake_uuid}/{malicious_path}')
-                # Deve retornar erro (400, 403 ou 404), nunca 200
-                self.assertNotEqual(response.status_code, 200)
+                self.assertIn(response.status_code, [400, 403, 404])
 
     def test_invalid_file_extensions_in_results(self):
         """Testa tentativas de acessar arquivos com extensões inválidas"""
@@ -190,20 +191,14 @@ class TestConfiguration(unittest.TestCase):
 
     def test_config_values(self):
         """Testa se as configurações têm valores válidos"""
-        config = Config()
+        config_obj = Config()
 
-        # Verificar se extensões permitidas estão definidas
-        self.assertIsInstance(config.ALLOWED_EXTENSIONS, set)
-        self.assertGreater(len(config.ALLOWED_EXTENSIONS), 0)
-
-        # Verificar limites de tamanho
-        self.assertGreater(config.MAX_CONTENT_LENGTH, 0)
-        self.assertGreater(config.MAX_FILENAME_LENGTH, 0)
-
-        # Verificar configurações de diretório
-        self.assertIsInstance(config.UPLOAD_FOLDER, str)
-        self.assertIsInstance(config.RESULTS_FOLDER, str)
+        self.assertIsInstance(config_obj.ALLOWED_EXTENSIONS, set)
+        self.assertGreater(len(config_obj.ALLOWED_EXTENSIONS), 0)
+        self.assertGreater(config_obj.MAX_CONTENT_LENGTH, 0)
+        self.assertGreater(config_obj.MAX_FILENAME_LENGTH, 0)
+        self.assertIsInstance(config_obj.UPLOAD_FOLDER, str)
+        self.assertIsInstance(config_obj.RESULTS_FOLDER, str)
 
 if __name__ == '__main__':
-    # Executar todos os testes
     unittest.main(verbosity=2)
